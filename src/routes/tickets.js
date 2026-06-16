@@ -80,3 +80,71 @@ router.get('/:id', verifierToken, async (req, res) => {
   }
 });
 module.exports = router;
+
+const { transitionAutorisee } = require('../services/ticketService');
+// PATCH /tickets/:id/statut — Changer le statut (RG-02, RG-03, RG-04)
+router.patch('/:id/statut', verifierToken, async (req, res) => {
+try {
+const { nouveau_statut } = req.body;
+const ticket = await Ticket.findByPk(req.params.id);
+if (!ticket) {
+return res.status(404).json({
+status: 'error', message: 'Ticket non trouve'
+});
+}
+// Verifier que la transition est autorisee (RG-02)
+if (!transitionAutorisee(ticket.statut, nouveau_statut)) {
+return res.status(400).json({
+status: 'error',
+message: `Transition interdite : ${ticket.statut} -> ${nouveau_statut}`
+});
+}
+// Si passage a 'resolu' : horodater resolu_le et calculer duree (RG-03, RG-04)
+if (nouveau_statut === 'resolu') {
+ticket.resolu_le = new Date();
+const diffMs = ticket.resolu_le - ticket.ouvert_le;
+ticket.duree_resolution_min = Math.round(diffMs / 60000);
+}
+// Si reouverture depuis 'resolu' : reinitialiser resolu_le (RG-09)
+if (ticket.statut === 'resolu' && nouveau_statut === 'en_cours') {
+ticket.resolu_le = null;
+ticket.duree_resolution_min = null;
+}
+ticket.statut = nouveau_statut;
+await ticket.save();
+res.json({
+status: 'success',
+message: `Statut mis a jour : ${nouveau_statut}`,
+data: ticket
+});
+} catch (error) {
+res.status(500).json({ status: 'error', message: error.message });
+}
+});
+// PATCH /tickets/:id/assignation
+router.patch('/:id/assignation', verifierToken,
+autoriserRoles('admin', 'responsable'),
+async (req, res) => {
+try {
+const { assigne_id } = req.body;
+const ticket = await Ticket.findByPk(req.params.id);
+if (!ticket) {
+return res.status(404).json({
+status: 'error', message: 'Ticket non trouve'
+});
+}
+// Verifier que le technicien existe
+const technicien = await User.findByPk(assigne_id);
+if (!technicien || technicien.role !== 'technicien') {
+return res.status(400).json({
+status: 'error', message: 'Technicien invalide'
+});
+}
+ticket.assigne_id = assigne_id;
+await ticket.save();
+res.json({ status: 'success', message: 'Ticket assigne', data: ticket });
+} catch (error) {
+res.status(500).json({ status: 'error', message: error.message });
+}
+}
+);
