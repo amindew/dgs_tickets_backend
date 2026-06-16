@@ -25,5 +25,10 @@ type: DataTypes.ENUM('admin', 'responsable', 'technicien'),
 allowNull: false,
 },
 });
+// A la fin du fichier User.js, avant return User
+User.associate = (models) => {
+  User.hasMany(models.Ticket, { foreignKey: 'cree_par',  as: 'ticketsCrees' });
+  User.hasMany(models.Ticket, { foreignKey: 'assigne_id', as: 'ticketsAssignes' });
+};
 return User;
 };
