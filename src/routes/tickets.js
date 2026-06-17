@@ -43,8 +43,10 @@ router.post('/', verifierToken,
     const ticket = await Ticket.create({
         titre,
         description,
-        priorite,
+        priorite, 
         client_nom,
+        client_email: req.body.client_email || null,
+        client_telephone: req.body.client_telephone || null,
         assigne_id: assigne_id || null,
         cree_par: req.user.id,  // ID de l'utilisateur connecte
         reference,

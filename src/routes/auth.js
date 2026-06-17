@@ -4,6 +4,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken'); 
 const { User } = require('../models');
+const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 // POST /auth/login
 router.post('/login', async (req, res) => {
   try {
@@ -39,6 +40,17 @@ router.post('/login', async (req, res) => {
       message: 'Connexion reussie',
       data: { token, role: user.role, nom: user.nom }
     });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+// GET /users — Lister tous les utilisateurs (admin seulement)
+router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'nom', 'email', 'role'],
+    });
+    res.json({ status: 'success', data: users });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
