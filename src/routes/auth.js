@@ -25,6 +25,13 @@ router.post('/login', async (req, res) => {
         message: 'Email ou mot de passe incorrect'
       });
     }
+    // 2bis. Vérifier que le compte est actif
+if (!user.actif) {
+  return res.status(403).json({
+    status: 'error',
+    message: 'Compte desactive, contactez votre administrateur'
+  });
+}
 
     console.log('SECRET dans auth.js:', JSON.stringify(process.env.JWT_SECRET));
     console.log("JWT_SECRET =", process.env.JWT_SECRET);

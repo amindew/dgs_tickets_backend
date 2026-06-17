@@ -24,6 +24,11 @@ role: {
 type: DataTypes.ENUM('admin', 'responsable', 'technicien'),
 allowNull: false,
 },
+actif: {
+  type: DataTypes.BOOLEAN,
+  allowNull: false,
+  defaultValue: true,
+},
 });
 // A la fin du fichier User.js, avant return User
 User.associate = (models) => {
