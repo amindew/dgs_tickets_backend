@@ -13,16 +13,16 @@ router.get('/', verifierToken, async (req, res) => {
   try {
     const tickets = await Ticket.findAll({
       include: [
-        { model: User, as: 'assigne', attributes: ['id','nom','email'] },
-        { model: User, as: 'createur', attributes: ['id','nom','email'] },
+        { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
+        { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
       order: [['ouvert_le', 'DESC']],
     });
     const groupes = {
-      a_faire:  tickets.filter(t => t.statut === 'a_faire'),
+      a_faire: tickets.filter(t => t.statut === 'a_faire'),
       en_cours: tickets.filter(t => t.statut === 'en_cours'),
-      bloque:   tickets.filter(t => t.statut === 'bloque'),
-      resolu:   tickets.filter(t => t.statut === 'resolu'),
+      bloque: tickets.filter(t => t.statut === 'bloque'),
+      resolu: tickets.filter(t => t.statut === 'resolu'),
     };
     res.json({ status: 'success', data: groupes });
   } catch (error) {
@@ -39,7 +39,7 @@ router.post('/', verifierToken,
       if (!titre || !priorite) {
         return res.status(400).json({
           status: 'error',
-          message: 'titre et priorite sont obligatoires'
+          message: 'titre et priorite sont obligatoires',
         });
       }
       const reference = await genererReference();
@@ -51,13 +51,13 @@ router.post('/', verifierToken,
         client_email: req.body.client_email || null,
         client_telephone: req.body.client_telephone || null,
         assigne_id: assigne_id || null,
-        cree_par: req.user.id,
+        cree_par: req.user.id, // ID de l'utilisateur connecte
         reference,
       });
       res.status(201).json({
         status: 'success',
         message: 'Ticket cree avec succes',
-        data: ticket
+        data: ticket,
       });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
@@ -70,13 +70,13 @@ router.get('/:id', verifierToken, async (req, res) => {
   try {
     const ticket = await Ticket.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'assigne',  attributes: ['id','nom','email'] },
-        { model: User, as: 'createur', attributes: ['id','nom','email'] },
+        { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
+        { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
     });
     if (!ticket) {
       return res.status(404).json({
-        status: 'error', message: 'Ticket non trouve'
+        status: 'error', message: 'Ticket non trouve',
       });
     }
     res.json({ status: 'success', data: ticket });
@@ -85,14 +85,14 @@ router.get('/:id', verifierToken, async (req, res) => {
   }
 });
 
-// PATCH /tickets/:id/statut — Changer le statut (RG-02, RG-03, RG-04)
+// PATCH /tickets/:id/statut — Changer le statut (RG-02, RG-03, RG-04, RG-09)
 router.patch('/:id/statut', verifierToken, async (req, res) => {
   try {
     const { nouveau_statut } = req.body;
     const ticket = await Ticket.findByPk(req.params.id);
     if (!ticket) {
       return res.status(404).json({
-        status: 'error', message: 'Ticket non trouve'
+        status: 'error', message: 'Ticket non trouve',
       });
     }
 
@@ -135,7 +135,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     res.json({
       status: 'success',
       message: `Statut mis a jour : ${nouveau_statut}`,
-      data: ticket
+      data: ticket,
     });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -169,15 +169,18 @@ router.patch('/:id/assignation', verifierToken,
       const ticket = await Ticket.findByPk(req.params.id);
       if (!ticket) {
         return res.status(404).json({
-          status: 'error', message: 'Ticket non trouve'
+          status: 'error', message: 'Ticket non trouve',
         });
       }
+
+      // Verifier que le technicien existe
       const technicien = await User.findByPk(assigne_id);
       if (!technicien || technicien.role !== 'technicien') {
         return res.status(400).json({
-          status: 'error', message: 'Technicien invalide'
+          status: 'error', message: 'Technicien invalide',
         });
       }
+
       ticket.assigne_id = assigne_id;
       await ticket.save();
       res.json({ status: 'success', message: 'Ticket assigne', data: ticket });
