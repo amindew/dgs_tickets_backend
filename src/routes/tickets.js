@@ -35,21 +35,33 @@ router.post('/', verifierToken,
   autoriserRoles('admin', 'responsable'),
   async (req, res) => {
     try {
-      const { titre, description, priorite, client_nom, assigne_id } = req.body;
-      if (!titre || !priorite) {
+      const {
+        titre,
+        description,
+        priorite,
+        client_nom,
+        client_email,
+        client_telephone,
+        assigne_id
+      } = req.body;
+
+      // Validation des champs obligatoires (titre, priorite, client_nom,
+      // client_email et client_telephone sont tous requis)
+      if (!titre || !priorite || !client_nom || !client_email || !client_telephone) {
         return res.status(400).json({
           status: 'error',
-          message: 'titre et priorite sont obligatoires',
+          message: 'titre, priorite, client_nom, client_email et client_telephone sont obligatoires',
         });
       }
+
       const reference = await genererReference();
       const ticket = await Ticket.create({
         titre,
         description,
         priorite,
         client_nom,
-        client_email: req.body.client_email || null,
-        client_telephone: req.body.client_telephone || null,
+        client_email,
+        client_telephone,
         assigne_id: assigne_id || null,
         cree_par: req.user.id, // ID de l'utilisateur connecte
         reference,
