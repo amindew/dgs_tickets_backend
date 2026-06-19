@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { Ticket, User, HistoriqueStatut } = require('../models');
+const { Op } = require('sequelize');
+const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
 const {
@@ -8,22 +9,42 @@ const {
   messageErreurTransition
 } = require('../services/ticketService');
 
-// GET /tickets — Lister tous les tickets groupes par statut
+// GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
   try {
+    let whereClause = {};
+
+    // RG-08 : technicien voit uniquement ses tickets
+    if (req.user.role === 'technicien') {
+      const commentaires = await Commentaire.findAll({
+        where: { auteur_id: req.user.id },
+        attributes: ['ticket_id'],
+      });
+      const ticketsCommentes = commentaires.map(c => c.ticket_id);
+      whereClause = {
+        [Op.or]: [
+          { assigne_id: req.user.id },
+          { id: ticketsCommentes },
+        ]
+      };
+    }
+
     const tickets = await Ticket.findAll({
+      where: whereClause,
       include: [
         { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
         { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
       order: [['ouvert_le', 'DESC']],
     });
+
     const groupes = {
       a_faire: tickets.filter(t => t.statut === 'a_faire'),
       en_cours: tickets.filter(t => t.statut === 'en_cours'),
       bloque: tickets.filter(t => t.statut === 'bloque'),
       resolu: tickets.filter(t => t.statut === 'resolu'),
     };
+
     res.json({ status: 'success', data: groupes });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -45,8 +66,6 @@ router.post('/', verifierToken,
         assigne_id
       } = req.body;
 
-      // Validation des champs obligatoires (titre, priorite, client_nom,
-      // client_email et client_telephone sont tous requis)
       if (!titre || !priorite || !client_nom || !client_email || !client_telephone) {
         return res.status(400).json({
           status: 'error',
@@ -63,9 +82,10 @@ router.post('/', verifierToken,
         client_email,
         client_telephone,
         assigne_id: assigne_id || null,
-        cree_par: req.user.id, // ID de l'utilisateur connecte
+        cree_par: req.user.id,
         reference,
       });
+
       res.status(201).json({
         status: 'success',
         message: 'Ticket cree avec succes',
@@ -77,7 +97,7 @@ router.post('/', verifierToken,
   }
 );
 
-// GET /tickets/:id — Detail d'un ticket
+// GET /tickets/:id — Detail d'un ticket (RG-08)
 router.get('/:id', verifierToken, async (req, res) => {
   try {
     const ticket = await Ticket.findByPk(req.params.id, {
@@ -86,11 +106,27 @@ router.get('/:id', verifierToken, async (req, res) => {
         { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
     });
+
     if (!ticket) {
       return res.status(404).json({
         status: 'error', message: 'Ticket non trouve',
       });
     }
+
+    // RG-08 : verifier l'acces si technicien
+    if (req.user.role === 'technicien') {
+      const estAssigne = ticket.assigne_id === req.user.id;
+      const aCommente = await Commentaire.findOne({
+        where: { ticket_id: ticket.id, auteur_id: req.user.id }
+      });
+      if (!estAssigne && !aCommente) {
+        return res.status(403).json({
+          status: 'error',
+          message: 'Acces refuse : ce ticket ne vous concerne pas',
+        });
+      }
+    }
+
     res.json({ status: 'success', data: ticket });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -102,13 +138,13 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
   try {
     const { nouveau_statut } = req.body;
     const ticket = await Ticket.findByPk(req.params.id);
+
     if (!ticket) {
       return res.status(404).json({
         status: 'error', message: 'Ticket non trouve',
       });
     }
 
-    // Verifier que la transition est autorisee (RG-02)
     if (!transitionAutorisee(ticket.statut, nouveau_statut)) {
       return res.status(400).json({
         status: 'error',
@@ -116,17 +152,14 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       });
     }
 
-    // Sauvegarder l'ancien statut AVANT toute modification (necessaire pour l'historique)
     const statutAvant = ticket.statut;
 
-    // Si passage a 'resolu' : horodater resolu_le et calculer duree (RG-03, RG-04)
     if (nouveau_statut === 'resolu') {
       ticket.resolu_le = new Date();
       const diffMs = ticket.resolu_le - ticket.ouvert_le;
       ticket.duree_resolution_min = Math.round(diffMs / 60000);
     }
 
-    // Si reouverture depuis 'resolu' : reinitialiser resolu_le (RG-09)
     if (ticket.statut === 'resolu' && nouveau_statut === 'en_cours') {
       ticket.resolu_le = null;
       ticket.duree_resolution_min = null;
@@ -135,7 +168,6 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     ticket.statut = nouveau_statut;
     await ticket.save();
 
-    // Enregistrer la transition dans l'historique
     await HistoriqueStatut.create({
       ticket_id: ticket.id,
       ancien_statut: statutAvant,
@@ -154,7 +186,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
   }
 });
 
-// GET /tickets/:id/historique — Historique des changements de statut
+// GET /tickets/:id/historique
 router.get('/:id/historique', verifierToken, async (req, res) => {
   try {
     const historique = await HistoriqueStatut.findAll({
@@ -164,7 +196,7 @@ router.get('/:id/historique', verifierToken, async (req, res) => {
         as: 'modificateur',
         attributes: ['id', 'nom', 'role'],
       }],
-      order: [['modifie_le', 'ASC']], // Du plus ancien au plus recent
+      order: [['modifie_le', 'ASC']],
     });
     res.json({ status: 'success', data: historique });
   } catch (error) {
@@ -179,13 +211,13 @@ router.patch('/:id/assignation', verifierToken,
     try {
       const { assigne_id } = req.body;
       const ticket = await Ticket.findByPk(req.params.id);
+
       if (!ticket) {
         return res.status(404).json({
           status: 'error', message: 'Ticket non trouve',
         });
       }
 
-      // Verifier que le technicien existe
       const technicien = await User.findByPk(assigne_id);
       if (!technicien || technicien.role !== 'technicien') {
         return res.status(400).json({
@@ -202,31 +234,34 @@ router.patch('/:id/assignation', verifierToken,
   }
 );
 
-const { Commentaire } = require('../models');
 // POST /tickets/:id/commentaires
 router.post('/:id/commentaires', verifierToken, async (req, res) => {
   try {
     const { contenu } = req.body;
     const ticket = await Ticket.findByPk(req.params.id);
+
     if (!ticket) {
       return res.status(404).json({
         status: 'error', message: 'Ticket non trouve'
       });
     }
+
     if (!contenu || contenu.trim() === '') {
       return res.status(400).json({
         status: 'error', message: 'Le contenu ne peut pas etre vide'
       });
     }
+
     const commentaire = await Commentaire.create({
       ticket_id: ticket.id,
       auteur_id: req.user.id,
       contenu: contenu.trim(),
     });
-    // Recharger avec les infos de l auteur
+
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
-      include: [{ model: User, as: 'auteur', attributes: ['id','nom','role'] }]
+      include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
     });
+
     res.status(201).json({
       status: 'success',
       message: 'Commentaire ajoute',
@@ -243,7 +278,7 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
     const commentaires = await Commentaire.findAll({
       where: { ticket_id: req.params.id },
       include: [{
-        model: User, as: 'auteur', attributes: ['id','nom','role']
+        model: User, as: 'auteur', attributes: ['id', 'nom', 'role']
       }],
       order: [['cree_le', 'ASC']],
     });
