@@ -202,4 +202,55 @@ router.patch('/:id/assignation', verifierToken,
   }
 );
 
+const { Commentaire } = require('../models');
+// POST /tickets/:id/commentaires
+router.post('/:id/commentaires', verifierToken, async (req, res) => {
+  try {
+    const { contenu } = req.body;
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({
+        status: 'error', message: 'Ticket non trouve'
+      });
+    }
+    if (!contenu || contenu.trim() === '') {
+      return res.status(400).json({
+        status: 'error', message: 'Le contenu ne peut pas etre vide'
+      });
+    }
+    const commentaire = await Commentaire.create({
+      ticket_id: ticket.id,
+      auteur_id: req.user.id,
+      contenu: contenu.trim(),
+    });
+    // Recharger avec les infos de l auteur
+    const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
+      include: [{ model: User, as: 'auteur', attributes: ['id','nom','role'] }]
+    });
+    res.status(201).json({
+      status: 'success',
+      message: 'Commentaire ajoute',
+      data: commentaireComplet
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET /tickets/:id/commentaires
+router.get('/:id/commentaires', verifierToken, async (req, res) => {
+  try {
+    const commentaires = await Commentaire.findAll({
+      where: { ticket_id: req.params.id },
+      include: [{
+        model: User, as: 'auteur', attributes: ['id','nom','role']
+      }],
+      order: [['cree_le', 'ASC']],
+    });
+    res.json({ status: 'success', data: commentaires });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 module.exports = router;
