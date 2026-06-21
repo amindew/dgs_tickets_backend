@@ -12,6 +12,7 @@ const {
 // GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
   try {
+    const { agent, client, priorite, statut, date_debut, date_fin } = req.query;
     let whereClause = {};
 
     // RG-08 : technicien voit uniquement ses tickets
@@ -27,6 +28,33 @@ router.get('/', verifierToken, async (req, res) => {
           { id: ticketsCommentes },
         ]
       };
+    }
+
+    // Filtre par agent (technicien assigne)
+    if (agent) {
+      whereClause.assigne_id = agent;
+    }
+
+    // Filtre par client (recherche partielle insensible a la casse)
+    if (client) {
+      whereClause.client_nom = { [Op.iLike]: `%${client}%` };
+    }
+
+    // Filtre par priorite
+    if (priorite) {
+      whereClause.priorite = priorite;
+    }
+
+    // Filtre par statut
+    if (statut) {
+      whereClause.statut = statut;
+    }
+
+    // Filtre par plage de dates
+    if (date_debut || date_fin) {
+      whereClause.ouvert_le = {};
+      if (date_debut) whereClause.ouvert_le[Op.gte] = new Date(date_debut);
+      if (date_fin) whereClause.ouvert_le[Op.lte] = new Date(date_fin);
     }
 
     const tickets = await Ticket.findAll({
