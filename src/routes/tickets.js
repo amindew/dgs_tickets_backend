@@ -288,4 +288,68 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
   }
 });
 
+const upload = require('../config/multer');
+const { PieceJointe } = require('../models');
+// POST /tickets/:id/pieces
+router.post('/:id/pieces', verifierToken,
+  upload.single('fichier'),  // 'fichier' = nom du champ dans le formulaire
+  async (req, res) => {
+    try {
+      const ticket = await Ticket.findByPk(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({
+          status: 'error', message: 'Ticket non trouve'
+        });
+      }
+      if (!req.file) {
+        return res.status(400).json({
+          status: 'error', message: 'Aucun fichier recu'
+        });
+      }
+      const piece = await PieceJointe.create({
+        ticket_id:   ticket.id,
+        url:         `/uploads/${req.file.filename}`,
+        nom_fichier: req.file.originalname,
+        taille_ko:   Math.round(req.file.size / 1024),
+      });
+      res.status(201).json({
+        status: 'success',
+        message: 'Fichier ajoute',
+        data: piece
+      });
+    } catch (error) {
+      res.status(500).json({ status: 'error', message: error.message });
+       }
+  }
+);
+// Gestion de l erreur Multer (fichier trop gros ou mauvais format)
+router.use((error, req, res, next) => {
+  if (error.message === 'Format de fichier non autorise') {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Format non autorise (PDF, DOCX, PNG, JPG uniquement)'
+    });
+  }
+  if (error.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      status: 'error',
+      message: 'Fichier trop volumineux (max 10 Mo)'
+    });
+  }
+  next(error);
+});
+
+// GET /tickets/:id/pieces
+router.get('/:id/pieces', verifierToken, async (req, res) => {
+  try {
+    const pieces = await PieceJointe.findAll({
+        where: { ticket_id: req.params.id },
+    });
+    res.json({ status: 'success', data: pieces });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+
 module.exports = router;
