@@ -21,7 +21,7 @@
     "password": "minty20067",
     "database": "dgs_tickets_db_prod",
     "port": 5433,
-      "host": "127.0.0.1",
-      "dialect": "postgres"
+    "host": "127.0.0.1",
+    "dialect": "postgres"
   }
 }
