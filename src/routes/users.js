@@ -4,10 +4,14 @@ const bcrypt = require('bcrypt');
 const { User } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 
-// GET /users — Lister tous les utilisateurs (admin seulement)
-router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
+// GET /users — Lister utilisateurs (admin) ou filtrer par role (admin + responsable)
+router.get('/', verifierToken, autoriserRoles('admin', 'responsable'), async (req, res) => {
   try {
+    const { role } = req.query;
+    const whereClause = role ? { role } : {};
+
     const users = await User.findAll({
+      where: whereClause,
       attributes: ['id', 'nom', 'email', 'role', 'actif'],
     });
     res.json({ status: 'success', data: users });
