@@ -14,16 +14,12 @@ router.get('/', verifierToken, async (req, res) => {
   try {
     const { agent, agents, client, priorite, statut, date_debut, date_fin } = req.query;
 
-    // Construire la liste des agents filtres
-    // Le frontend envoie agents[] (tableau) via Axios params
-    // On normalise en tableau dans tous les cas
     let agentsFiltre = [];
     if (agents) {
       agentsFiltre = Array.isArray(agents) ? agents : [agents];
     } else if (agent) {
       agentsFiltre = Array.isArray(agent) ? agent : [agent];
     }
-    // Supprimer les valeurs vides
     agentsFiltre = agentsFiltre.filter(Boolean);
 
     let whereClause = {};
@@ -43,42 +39,33 @@ router.get('/', verifierToken, async (req, res) => {
       };
     }
 
-    // Filtre par technicien(s) assigne(s)
-    // Si un seul agent : WHERE assigne_id = 'uuid'
-    // Si plusieurs agents : WHERE assigne_id IN ('uuid1', 'uuid2')
     if (agentsFiltre.length === 1) {
       whereClause.assigne_id = agentsFiltre[0];
     } else if (agentsFiltre.length > 1) {
       whereClause.assigne_id = { [Op.in]: agentsFiltre };
     }
 
-    // Filtre par client (recherche partielle insensible a la casse)
     if (client) {
       whereClause.client_nom = { [Op.iLike]: `%${client}%` };
     }
 
-    // Filtre par priorite
     if (priorite) {
       whereClause.priorite = priorite;
     }
 
-    // Filtre par statut
     if (statut) {
       whereClause.statut = statut;
     }
 
-    // Filtre par plage de dates
     if (date_debut || date_fin) {
-  whereClause.ouvert_le = {};
-  if (date_debut) {
-    // Debut de journee : 00:00:00 heure locale
-    whereClause.ouvert_le[Op.gte] = new Date(date_debut + 'T00:00:00');
-  }
-  if (date_fin) {
-    // Fin de journee : 23:59:59 pour inclure toute la journee
-    whereClause.ouvert_le[Op.lte] = new Date(date_fin + 'T23:59:59');
-  }
-}
+      whereClause.ouvert_le = {};
+      if (date_debut) {
+        whereClause.ouvert_le[Op.gte] = new Date(date_debut + 'T00:00:00');
+      }
+      if (date_fin) {
+        whereClause.ouvert_le[Op.lte] = new Date(date_fin + 'T23:59:59');
+      }
+    }
 
     const tickets = await Ticket.findAll({
       where: whereClause,
@@ -226,29 +213,27 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       modifie_par:    req.user.id,
       modifie_le:     new Date(),
     });
-   
-    // Apres await HistoriqueStatut.create({...}) :
-// RG-05 : notifier le createur et l assigne via WebSocket
-const io = req.app.get('io');
-if (io) {
-  const notification = {
-    type:           'statut_change',
-    ticket_id:      ticket.id,
-    reference:      ticket.reference,
-    titre:          ticket.titre,
-    ancien_statut:  statutAvant,
-    nouveau_statut: nouveau_statut,
-    modifie_par:    req.user.nom,
-    date:           new Date().toISOString(),
-  };
-  // Notifier le createur
-  if (ticket.cree_par) {
-    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-  }
-  // Notifier l assigne (si different du createur)
-  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-  }}
+
+    // RG-05 : notifier le createur et l assigne via WebSocket
+    const io = req.app.get('io');
+    if (io) {
+      const notification = {
+        type:           'statut_change',
+        ticket_id:      ticket.id,
+        reference:      ticket.reference,
+        titre:          ticket.titre,
+        ancien_statut:  statutAvant,
+        nouveau_statut: nouveau_statut,
+        modifie_par:    req.user.nom,
+        date:           new Date().toISOString(),
+      };
+      if (ticket.cree_par) {
+        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+      }
+      if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+      }
+    }
 
     res.json({
       status: 'success',
@@ -422,6 +407,48 @@ router.get('/:id/pieces', verifierToken, async (req, res) => {
       where: { ticket_id: req.params.id },
     });
     res.json({ status: 'success', data: pieces });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// GET /tickets/:id/sla — Indicateur SLA d'un ticket (RG-04) <- C
+router.get('/:id/sla', verifierToken, async (req, res) => {
+  try {
+    const ticket = await Ticket.findByPk(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({
+        status: 'error', message: 'Ticket non trouve'
+      });
+    }
+
+    const maintenant = new Date();
+    const ouverture  = new Date(ticket.ouvert_le);
+    const fermeture  = ticket.resolu_le ? new Date(ticket.resolu_le) : maintenant;
+    const dureeMin   = Math.round((fermeture - ouverture) / 60000);
+
+    // Seuils SLA selon la priorite (en minutes)
+    const SEUILS = {
+      critique: 60,   // 1 heure
+      moyenne:  240,  // 4 heures
+      basse:    1440, // 24 heures
+    };
+
+    const seuil   = SEUILS[ticket.priorite] || 240;
+    const depasse = dureeMin > seuil;
+    const estResolu = ticket.statut === 'resolu';
+
+    res.json({
+      status: 'success',
+      data: {
+        duree_actuelle_min:    dureeMin,
+        duree_resolution_min:  ticket.duree_resolution_min,
+        seuil_min:             seuil,
+        depasse,
+        est_resolu:            estResolu,
+        pourcentage:           Math.min(Math.round((dureeMin / seuil) * 100), 100),
+      }
+    });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
