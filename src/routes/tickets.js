@@ -228,9 +228,33 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
         date:           new Date().toISOString(),
       };
       if (ticket.cree_par) {
-        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-      }
+        const io = req.app.get('io');
+
+if (io) {
+  const notification = {
+    type: 'statut_change',
+    ticket_id: ticket.id,
+    reference: ticket.reference,
+    titre: ticket.titre,
+    ancien_statut: statutAvant,
+    nouveau_statut: nouveau_statut,
+    modifie_par: req.user.nom,
+    date: new Date().toISOString(),
+  };
+
+  // ✅ créateur
+  if (ticket.cree_par) {
+    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+  }
+
+  // ✅ assigné
+  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+  }
+}
+        }
       if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+        console.log("📢 Notification envoyée :", notification);
         io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
       }
     }
@@ -317,6 +341,27 @@ router.post('/:id/commentaires', verifierToken, async (req, res) => {
       contenu:   contenu.trim(),
     });
 
+    const io = req.app.get('io');
+
+if (io) {
+  const notification = {
+    type: 'nouveau_commentaire',
+    ticket_id: ticket.id,
+    reference: ticket.reference,
+    contenu: commentaire.contenu,
+    auteur: req.user.nom,
+    date: new Date().toISOString(),
+  };
+
+  if (ticket.cree_par) {
+    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+  }
+
+  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+  }
+}
+
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
       include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
     });
@@ -372,6 +417,28 @@ router.post('/:id/pieces', verifierToken,
         nom_fichier: req.file.originalname,
         taille_ko:   Math.round(req.file.size / 1024),
       });
+
+const io = req.app.get('io');
+
+if (io) {
+  const notification = {
+    type: 'nouvelle_piece_jointe',
+    ticket_id: ticket.id,
+    reference: ticket.reference,
+    nom_fichier: piece.nom_fichier,
+    auteur: req.user.nom,
+    date: new Date().toISOString(),
+  };
+
+  if (ticket.cree_par) {
+    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+  }
+
+  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+  }
+}
+
       res.status(201).json({
         status: 'success',
         message: 'Fichier ajoute',

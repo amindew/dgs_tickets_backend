@@ -45,7 +45,7 @@ if (!user.actif) {
     res.json({
       status: 'success',
       message: 'Connexion reussie',
-      data: { token, role: user.role, nom: user.nom }
+      data: { token, role: user.role, nom: user.nom,id: user.id }
     });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
