@@ -15,12 +15,24 @@ router.get('/', verifierToken, async (req, res) => {
     const { agent, agents, client, priorite, statut, date_debut, date_fin } = req.query;
 
     let agentsFiltre = [];
-    if (agents) {
-      agentsFiltre = Array.isArray(agents) ? agents : [agents];
-    } else if (agent) {
-      agentsFiltre = Array.isArray(agent) ? agent : [agent];
-    }
-    agentsFiltre = agentsFiltre.filter(Boolean);
+
+if (req.query['agents[]']) {
+  agentsFiltre = Array.isArray(req.query['agents[]'])
+    ? req.query['agents[]']
+    : [req.query['agents[]']];
+}
+else if (req.query.agents) {
+  agentsFiltre = Array.isArray(req.query.agents)
+    ? req.query.agents
+    : [req.query.agents];
+}
+else if (req.query.agent) {
+  agentsFiltre = Array.isArray(req.query.agent)
+    ? req.query.agent
+    : [req.query.agent];
+}
+
+agentsFiltre = agentsFiltre.filter(Boolean);
 
     let whereClause = {};
 
@@ -39,12 +51,11 @@ router.get('/', verifierToken, async (req, res) => {
       };
     }
 
-    if (agentsFiltre.length === 1) {
-      whereClause.assigne_id = agentsFiltre[0];
-    } else if (agentsFiltre.length > 1) {
-      whereClause.assigne_id = { [Op.in]: agentsFiltre };
-    }
-
+  if (agentsFiltre.length > 0) {
+  whereClause.assigne_id = {
+    [Op.in]: agentsFiltre
+  };
+}
     if (client) {
       whereClause.client_nom = { [Op.iLike]: `%${client}%` };
     }
@@ -67,14 +78,30 @@ router.get('/', verifierToken, async (req, res) => {
       }
     }
 
-    const tickets = await Ticket.findAll({
-      where: whereClause,
-      include: [
-        { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'] },
-        { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
-      ],
-      order: [['ouvert_le', 'DESC']],
-    });
+    console.log('======================');
+console.log('QUERY =', req.query);
+console.log('AGENTS FILTRE =', agentsFiltre);
+console.log('WHERE CLAUSE =', whereClause);
+
+const tickets = await Ticket.findAll({
+  where: whereClause,
+  include: [
+    { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
+    { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
+  ],
+  order: [['ouvert_le', 'DESC']],
+});
+
+console.log(
+  'TICKETS TROUVES =',
+  tickets.map(t => ({
+    id: t.id,
+    titre: t.titre,
+    assigne_id: t.assigne_id
+  }))
+);
+
+console.log('======================');
 
     const groupes = {
       a_faire:  tickets.filter(t => t.statut === 'a_faire'),
