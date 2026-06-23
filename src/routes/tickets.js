@@ -12,7 +12,20 @@ const {
 // GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
   try {
-    const { agent, client, priorite, statut, date_debut, date_fin } = req.query;
+    const { agent, agents, client, priorite, statut, date_debut, date_fin } = req.query;
+
+    // Construire la liste des agents filtres
+    // Le frontend envoie agents[] (tableau) via Axios params
+    // On normalise en tableau dans tous les cas
+    let agentsFiltre = [];
+    if (agents) {
+      agentsFiltre = Array.isArray(agents) ? agents : [agents];
+    } else if (agent) {
+      agentsFiltre = Array.isArray(agent) ? agent : [agent];
+    }
+    // Supprimer les valeurs vides
+    agentsFiltre = agentsFiltre.filter(Boolean);
+
     let whereClause = {};
 
     // RG-08 : technicien voit uniquement ses tickets
@@ -30,9 +43,13 @@ router.get('/', verifierToken, async (req, res) => {
       };
     }
 
-    // Filtre par agent (technicien assigne)
-    if (agent) {
-      whereClause.assigne_id = agent;
+    // Filtre par technicien(s) assigne(s)
+    // Si un seul agent : WHERE assigne_id = 'uuid'
+    // Si plusieurs agents : WHERE assigne_id IN ('uuid1', 'uuid2')
+    if (agentsFiltre.length === 1) {
+      whereClause.assigne_id = agentsFiltre[0];
+    } else if (agentsFiltre.length > 1) {
+      whereClause.assigne_id = { [Op.in]: agentsFiltre };
     }
 
     // Filtre par client (recherche partielle insensible a la casse)
@@ -52,25 +69,31 @@ router.get('/', verifierToken, async (req, res) => {
 
     // Filtre par plage de dates
     if (date_debut || date_fin) {
-      whereClause.ouvert_le = {};
-      if (date_debut) whereClause.ouvert_le[Op.gte] = new Date(date_debut);
-      if (date_fin) whereClause.ouvert_le[Op.lte] = new Date(date_fin);
-    }
+  whereClause.ouvert_le = {};
+  if (date_debut) {
+    // Debut de journee : 00:00:00 heure locale
+    whereClause.ouvert_le[Op.gte] = new Date(date_debut + 'T00:00:00');
+  }
+  if (date_fin) {
+    // Fin de journee : 23:59:59 pour inclure toute la journee
+    whereClause.ouvert_le[Op.lte] = new Date(date_fin + 'T23:59:59');
+  }
+}
 
     const tickets = await Ticket.findAll({
       where: whereClause,
       include: [
-        { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
+        { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'] },
         { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
       order: [['ouvert_le', 'DESC']],
     });
 
     const groupes = {
-      a_faire: tickets.filter(t => t.statut === 'a_faire'),
+      a_faire:  tickets.filter(t => t.statut === 'a_faire'),
       en_cours: tickets.filter(t => t.statut === 'en_cours'),
-      bloque: tickets.filter(t => t.statut === 'bloque'),
-      resolu: tickets.filter(t => t.statut === 'resolu'),
+      bloque:   tickets.filter(t => t.statut === 'bloque'),
+      resolu:   tickets.filter(t => t.statut === 'resolu'),
     };
 
     res.json({ status: 'success', data: groupes });
@@ -94,10 +117,10 @@ router.post('/', verifierToken,
         assigne_id
       } = req.body;
 
-      if (!titre || !priorite || !client_nom || !client_email || !client_telephone) {
+      if (!titre || !priorite || !client_nom || !client_telephone) {
         return res.status(400).json({
           status: 'error',
-          message: 'titre, priorite, client_nom, client_email et client_telephone sont obligatoires',
+          message: 'titre, priorite, client_nom et client_telephone sont obligatoires',
         });
       }
 
@@ -110,7 +133,7 @@ router.post('/', verifierToken,
         client_email,
         client_telephone,
         assigne_id: assigne_id || null,
-        cree_par: req.user.id,
+        cree_par:   req.user.id,
         reference,
       });
 
@@ -130,7 +153,7 @@ router.get('/:id', verifierToken, async (req, res) => {
   try {
     const ticket = await Ticket.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
+        { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'] },
         { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
       ],
     });
@@ -144,7 +167,7 @@ router.get('/:id', verifierToken, async (req, res) => {
     // RG-08 : verifier l'acces si technicien
     if (req.user.role === 'technicien') {
       const estAssigne = ticket.assigne_id === req.user.id;
-      const aCommente = await Commentaire.findOne({
+      const aCommente  = await Commentaire.findOne({
         where: { ticket_id: ticket.id, auteur_id: req.user.id }
       });
       if (!estAssigne && !aCommente) {
@@ -189,7 +212,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     }
 
     if (ticket.statut === 'resolu' && nouveau_statut === 'en_cours') {
-      ticket.resolu_le = null;
+      ticket.resolu_le            = null;
       ticket.duree_resolution_min = null;
     }
 
@@ -197,11 +220,11 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     await ticket.save();
 
     await HistoriqueStatut.create({
-      ticket_id: ticket.id,
-      ancien_statut: statutAvant,
+      ticket_id:      ticket.id,
+      ancien_statut:  statutAvant,
       nouveau_statut: nouveau_statut,
-      modifie_par: req.user.id,
-      modifie_le: new Date(),
+      modifie_par:    req.user.id,
+      modifie_le:     new Date(),
     });
 
     res.json({
@@ -221,7 +244,7 @@ router.get('/:id/historique', verifierToken, async (req, res) => {
       where: { ticket_id: req.params.id },
       include: [{
         model: User,
-        as: 'modificateur',
+        as:    'modificateur',
         attributes: ['id', 'nom', 'role'],
       }],
       order: [['modifie_le', 'ASC']],
@@ -283,7 +306,7 @@ router.post('/:id/commentaires', verifierToken, async (req, res) => {
     const commentaire = await Commentaire.create({
       ticket_id: ticket.id,
       auteur_id: req.user.id,
-      contenu: contenu.trim(),
+      contenu:   contenu.trim(),
     });
 
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
@@ -316,11 +339,12 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
   }
 });
 
-const upload = require('../config/multer');
-const { PieceJointe } = require('../models');
 // POST /tickets/:id/pieces
+const upload      = require('../config/multer');
+const { PieceJointe } = require('../models');
+
 router.post('/:id/pieces', verifierToken,
-  upload.single('fichier'),  // 'fichier' = nom du champ dans le formulaire
+  upload.single('fichier'),
   async (req, res) => {
     try {
       const ticket = await Ticket.findByPk(req.params.id);
@@ -347,10 +371,11 @@ router.post('/:id/pieces', verifierToken,
       });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
-       }
+    }
   }
 );
-// Gestion de l erreur Multer (fichier trop gros ou mauvais format)
+
+// Gestion des erreurs Multer
 router.use((error, req, res, next) => {
   if (error.message === 'Format de fichier non autorise') {
     return res.status(400).json({
@@ -371,13 +396,12 @@ router.use((error, req, res, next) => {
 router.get('/:id/pieces', verifierToken, async (req, res) => {
   try {
     const pieces = await PieceJointe.findAll({
-        where: { ticket_id: req.params.id },
+      where: { ticket_id: req.params.id },
     });
     res.json({ status: 'success', data: pieces });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
-
 
 module.exports = router;
