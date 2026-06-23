@@ -226,6 +226,29 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       modifie_par:    req.user.id,
       modifie_le:     new Date(),
     });
+   
+    // Apres await HistoriqueStatut.create({...}) :
+// RG-05 : notifier le createur et l assigne via WebSocket
+const io = req.app.get('io');
+if (io) {
+  const notification = {
+    type:           'statut_change',
+    ticket_id:      ticket.id,
+    reference:      ticket.reference,
+    titre:          ticket.titre,
+    ancien_statut:  statutAvant,
+    nouveau_statut: nouveau_statut,
+    modifie_par:    req.user.nom,
+    date:           new Date().toISOString(),
+  };
+  // Notifier le createur
+  if (ticket.cree_par) {
+    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+  }
+  // Notifier l assigne (si different du createur)
+  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+  }}
 
     res.json({
       status: 'success',
