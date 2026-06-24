@@ -38,6 +38,7 @@ io.on('connection', (socket) => {
   console.log('Client connecte :', socket.id);
 
   socket.on('rejoindre', (userId) => {
+    console.log("Utilisateur rejoint :", userId);
     socket.join(`user_${userId}`);
     console.log(`Utilisateur ${userId} a rejoint sa room`);
   });

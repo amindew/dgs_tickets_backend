@@ -206,7 +206,8 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
 
     if (!ticket) {
       return res.status(404).json({
-        status: 'error', message: 'Ticket non trouve',
+        status: 'error',
+        message: 'Ticket non trouve',
       });
     }
 
@@ -226,7 +227,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     }
 
     if (ticket.statut === 'resolu' && nouveau_statut === 'en_cours') {
-      ticket.resolu_le            = null;
+      ticket.resolu_le = null;
       ticket.duree_resolution_min = null;
     }
 
@@ -234,56 +235,44 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     await ticket.save();
 
     await HistoriqueStatut.create({
-      ticket_id:      ticket.id,
-      ancien_statut:  statutAvant,
+      ticket_id: ticket.id,
+      ancien_statut: statutAvant,
       nouveau_statut: nouveau_statut,
-      modifie_par:    req.user.id,
-      modifie_le:     new Date(),
+      modifie_par: req.user.id,
+      modifie_le: new Date(),
     });
 
-    // RG-05 : notifier le createur et l assigne via WebSocket
+    // ✅ SOCKET PROPRE
     const io = req.app.get('io');
+
     if (io) {
+      console.log("🔥 IO =", io);
       const notification = {
-        type:           'statut_change',
-        ticket_id:      ticket.id,
-        reference:      ticket.reference,
-        titre:          ticket.titre,
-        ancien_statut:  statutAvant,
+        type: 'statut_change',
+        ticket_id: ticket.id,
+        reference: ticket.reference,
+        titre: ticket.titre,
+        ancien_statut: statutAvant,
         nouveau_statut: nouveau_statut,
-        modifie_par:    req.user.nom,
-        date:           new Date().toISOString(),
+        modifie_par: req.user.nom,
+        date: new Date().toISOString(),
       };
+
+      console.log("📢 Envoi notif statut à :", ticket.cree_par, ticket.assigne_id);
+
       if (ticket.cree_par) {
-        const io = req.app.get('io');
+        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+      }
 
-if (io) {
-  const notification = {
-    type: 'statut_change',
-    ticket_id: ticket.id,
-    reference: ticket.reference,
-    titre: ticket.titre,
-    ancien_statut: statutAvant,
-    nouveau_statut: nouveau_statut,
-    modifie_par: req.user.nom,
-    date: new Date().toISOString(),
-  };
-
-  // ✅ créateur
-  if (ticket.cree_par) {
-    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-  }
-
-  // ✅ assigné
-  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-  }
-}
-        }
       if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-        console.log("📢 Notification envoyée :", notification);
         io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
       }
+
+      // 🔥 TEMPS RÉEL
+      io.emit('ticket_mis_a_jour', {
+        ticket_id: ticket.id,
+        statut: nouveau_statut,
+      });
     }
 
     res.json({
@@ -291,11 +280,11 @@ if (io) {
       message: `Statut mis a jour : ${nouveau_statut}`,
       data: ticket,
     });
+
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
-
 // GET /tickets/:id/historique
 router.get('/:id/historique', verifierToken, async (req, res) => {
   try {
@@ -352,57 +341,75 @@ router.post('/:id/commentaires', verifierToken, async (req, res) => {
 
     if (!ticket) {
       return res.status(404).json({
-        status: 'error', message: 'Ticket non trouve'
+        status: 'error',
+        message: 'Ticket non trouve'
       });
     }
 
     if (!contenu || contenu.trim() === '') {
       return res.status(400).json({
-        status: 'error', message: 'Le contenu ne peut pas etre vide'
+        status: 'error',
+        message: 'Le contenu ne peut pas etre vide'
       });
     }
 
     const commentaire = await Commentaire.create({
       ticket_id: ticket.id,
       auteur_id: req.user.id,
-      contenu:   contenu.trim(),
+      contenu: contenu.trim(),
     });
-
-    const io = req.app.get('io');
-
-if (io) {
-  const notification = {
-    type: 'nouveau_commentaire',
-    ticket_id: ticket.id,
-    reference: ticket.reference,
-    contenu: commentaire.contenu,
-    auteur: req.user.nom,
-    date: new Date().toISOString(),
-  };
-
-  if (ticket.cree_par) {
-    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-  }
-
-  if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-  }
-}
 
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
       include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
     });
+
+    const io = req.app.get('io');
+
+    if (io) {
+      const notification = {
+        type: 'nouveau_commentaire',
+        ticket_id: ticket.id,
+        reference: ticket.reference,
+        contenu: commentaire.contenu,
+        auteur: req.user.nom,
+        date: new Date().toISOString(),
+      };
+
+      // 🔔 notif
+      if (ticket.cree_par) {
+        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+      }
+
+      if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+      }
+
+      // ⚡ temps réel (affichage direct)
+      if (ticket.cree_par) {
+        io.to(`user_${ticket.cree_par}`).emit('commentaire_ajoute', {
+          ticket_id: ticket.id,
+          commentaire: commentaireComplet
+        });
+      }
+
+      if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+        io.to(`user_${ticket.assigne_id}`).emit('commentaire_ajoute', {
+          ticket_id: ticket.id,
+          commentaire: commentaireComplet
+        });
+      }
+    }
 
     res.status(201).json({
       status: 'success',
       message: 'Commentaire ajoute',
       data: commentaireComplet
     });
+
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
-
 // GET /tickets/:id/commentaires
 router.get('/:id/commentaires', verifierToken, async (req, res) => {
   try {
@@ -457,15 +464,19 @@ if (io) {
     date: new Date().toISOString(),
   };
 
-  if (ticket.cree_par) {
-    io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-  }
+  const envoyer = (userId) => {
+    io.to(`user_${userId}`).emit('notification', notification);
+    io.to(`user_${userId}`).emit('piece_jointe_ajoutee', {
+      ticket_id: ticket.id,
+      piece: piece
+    });
+  };
 
+  if (ticket.cree_par) envoyer(ticket.cree_par);
   if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-    io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+    envoyer(ticket.assigne_id);
   }
 }
-
       res.status(201).json({
         status: 'success',
         message: 'Fichier ajoute',
