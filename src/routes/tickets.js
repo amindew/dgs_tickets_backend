@@ -247,6 +247,12 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
 
     if (io) {
       console.log("🔥 IO =", io);
+      const labelsStatut = {
+        a_faire: 'À faire', en_cours: 'En cours', bloque: 'Bloqué', resolu: 'Résolu'
+      };
+      const messageCreateur = `Le ticket ${ticket.reference} "${ticket.titre}" est passé de "${labelsStatut[statutAvant] || statutAvant}" à "${labelsStatut[nouveau_statut] || nouveau_statut}" par ${req.user.nom}`;
+      const messageAssigne  = `Statut du ticket ${ticket.reference} que vous gérez : "${labelsStatut[statutAvant] || statutAvant}" → "${labelsStatut[nouveau_statut] || nouveau_statut}"`;
+
       const notification = {
         type: 'statut_change',
         ticket_id: ticket.id,
@@ -255,6 +261,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
         ancien_statut: statutAvant,
         nouveau_statut: nouveau_statut,
         modifie_par: req.user.nom,
+        message: messageCreateur,
         date: new Date().toISOString(),
       };
 
@@ -335,6 +342,7 @@ router.patch('/:id/assignation', verifierToken,
 
 // POST /tickets/:id/commentaires
 router.post('/:id/commentaires', verifierToken, async (req, res) => {
+  console.log('AUTEUR DU COMMENTAIRE =', req.user);
   try {
     const { contenu } = req.body;
     const ticket = await Ticket.findByPk(req.params.id);
@@ -353,25 +361,49 @@ router.post('/:id/commentaires', verifierToken, async (req, res) => {
       });
     }
 
+    const { reponse_a_id } = req.body;
+
+    console.log('========================');
+console.log('UTILISATEUR CONNECTÉ');
+console.log(req.user.id);
+console.log(req.user.nom);
+console.log(req.user.role);
+console.log('========================');
+
     const commentaire = await Commentaire.create({
       ticket_id: ticket.id,
       auteur_id: req.user.id,
       contenu: contenu.trim(),
+      reponse_a_id: reponse_a_id || null,
     });
 
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
-      include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
+      include: [
+        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] },
+        {
+          model: Commentaire,
+          as: 'reponse_a',
+          attributes: ['id', 'contenu'],
+          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom'] }]
+        }
+      ]
     });
 
     const io = req.app.get('io');
 
     if (io) {
+      const extrait = commentaire.contenu.length > 60
+        ? commentaire.contenu.slice(0, 60) + '...'
+        : commentaire.contenu;
+
       const notification = {
         type: 'nouveau_commentaire',
         ticket_id: ticket.id,
         reference: ticket.reference,
+        titre: ticket.titre,
         contenu: commentaire.contenu,
         auteur: req.user.nom,
+        message: `${req.user.nom} a commenté sur ${ticket.reference} : "${extrait}"`,
         date: new Date().toISOString(),
       };
 
@@ -415,12 +447,41 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
   try {
     const commentaires = await Commentaire.findAll({
       where: { ticket_id: req.params.id },
-      include: [{
-        model: User, as: 'auteur', attributes: ['id', 'nom', 'role']
-      }],
+      include: [
+        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] },
+        {
+          model: Commentaire,
+          as: 'reponse_a',
+          attributes: ['id', 'contenu'],
+          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom'] }]
+        }
+      ],
       order: [['cree_le', 'ASC']],
     });
     res.json({ status: 'success', data: commentaires });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// DELETE /tickets/:id/commentaires/:commentaireId
+router.delete('/:id/commentaires/:commentaireId', verifierToken, async (req, res) => {
+  try {
+    const commentaire = await Commentaire.findByPk(req.params.commentaireId, {
+      include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
+    });
+
+    if (!commentaire) {
+      return res.status(404).json({ status: 'error', message: 'Commentaire non trouvé' });
+    }
+// APRÈS — forcer string pour éviter les problèmes de type
+   if (String(commentaire.auteur_id) !== String(req.user.id) && req.user.role !== 'admin') {
+      return res.status(403).json({ status: 'error', message: 'Non autorisé à supprimer ce commentaire' });
+    }
+    const contenuSupprime = commentaire.contenu;
+    await commentaire.destroy();
+
+    res.json({ status: 'success', message: 'Commentaire supprimé' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
@@ -459,8 +520,10 @@ if (io) {
     type: 'nouvelle_piece_jointe',
     ticket_id: ticket.id,
     reference: ticket.reference,
+    titre: ticket.titre,
     nom_fichier: piece.nom_fichier,
     auteur: req.user.nom,
+    message: `${req.user.nom} a joint le fichier "${piece.nom_fichier}" sur le ticket ${ticket.reference}`,
     date: new Date().toISOString(),
   };
 

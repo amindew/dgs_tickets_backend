@@ -23,12 +23,19 @@ module.exports = (sequelize) => {
       allowNull: false,
       defaultValue: DataTypes.NOW,
     },
+    reponse_a_id: {
+  type: DataTypes.UUID,
+  allowNull: true
+  },
   });
   Commentaire.associate = (models) => {
     Commentaire.belongsTo(models.Ticket, { foreignKey: 'ticket_id' });
     Commentaire.belongsTo(models.User,   {
       foreignKey: 'auteur_id', as: 'auteur'
     });
+  // Auto-référence pour les réponses
+    Commentaire.belongsTo(models.Commentaire, { foreignKey: 'reponse_a_id', as: 'reponse_a' });
+    Commentaire.hasMany(models.Commentaire,   { foreignKey: 'reponse_a_id', as: 'reponses' });
   };
   return Commentaire;
 };
