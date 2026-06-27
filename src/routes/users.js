@@ -102,5 +102,4 @@ router.patch('/:id/actif', verifierToken, autoriserRoles('admin'), async (req, r
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
-
 module.exports = router;
