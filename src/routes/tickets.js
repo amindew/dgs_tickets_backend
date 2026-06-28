@@ -121,15 +121,16 @@ router.post('/', verifierToken,
   autoriserRoles('admin', 'responsable'),
   async (req, res) => {
     try {
-      const {
-        titre,
-        description,
-        priorite,
-        client_nom,
-        client_email,
-        client_telephone,
-        assigne_id
-      } = req.body;
+     const {
+    titre,
+    description,
+    priorite,
+    client_nom,
+    client_email,
+    client_telephone,
+    assigne_id,
+    date_limite_resolution
+   } = req.body;
 
       if (!titre || !priorite || !client_nom || !client_telephone) {
         return res.status(400).json({
@@ -137,19 +138,27 @@ router.post('/', verifierToken,
           message: 'titre, priorite, client_nom et client_telephone sont obligatoires',
         });
       }
+      if (date_limite_resolution && !assigne_id) {
+  return res.status(400).json({
+    status: 'error',
+    message:
+      'Vous devez assigner un technicien avant de définir une date limite de résolution.',
+  });
+}
 
       const reference = await genererReference();
       const ticket = await Ticket.create({
-        titre,
-        description,
-        priorite,
-        client_nom,
-        client_email,
-        client_telephone,
-        assigne_id: assigne_id || null,
-        cree_par:   req.user.id,
-        reference,
-      });
+  titre,
+  description,
+  priorite,
+  client_nom,
+  client_email,
+  client_telephone,
+  assigne_id: assigne_id || null,
+  date_limite_resolution: date_limite_resolution || null,
+  cree_par: req.user.id,
+  reference,
+});
 
       res.status(201).json({
         status: 'success',
