@@ -9,6 +9,8 @@ const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 
 // ─── Helper : envoyer email via Resend ───────────────────────────────────────
 async function envoyerEmail({ to, subject, html }) {
+  const destinataire = to;
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -16,13 +18,13 @@ async function envoyerEmail({ to, subject, html }) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'DGS Tickets <onboarding@resend.dev>',
-      // Dans envoyerEmail, remplace `to` par :
-to: process.env.NODE_ENV === 'production' ? to : process.env.RESEND_TEST_EMAIL,
+      from: process.env.EMAIL_FROM || 'DGS Tickets <noreply@dgsafrica.com>',
+      to: destinataire,
       subject,
       html,
     }),
   });
+
   if (!res.ok) {
     const err = await res.json();
     throw new Error(`Resend error: ${JSON.stringify(err)}`);
@@ -49,8 +51,7 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ status: 'error', message: 'Compte désactivé, contactez votre administrateur' });
     }
 
-    // Bloquer si le mot de passe n'a pas encore été défini (compte invité)
-    if (user.invitation_en_attente) {
+    if (user.invitation_en_attente === true) {
       return res.status(403).json({
         status: 'error',
         message: 'Vous devez d\'abord définir votre mot de passe via le lien reçu par email'
@@ -73,7 +74,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ─── POST /auth/inviter — Créer un compte et envoyer l'email (admin) ──────────
+// ─── POST /auth/inviter ───────────────────────────────────────────────────────
 router.post('/inviter', verifierToken, autoriserRoles('admin'), async (req, res) => {
   try {
     const { nom, email, role } = req.body;
@@ -87,21 +88,17 @@ router.post('/inviter', verifierToken, autoriserRoles('admin'), async (req, res)
       return res.status(400).json({ status: 'error', message: 'Un compte avec cet email existe déjà' });
     }
 
-    // Générer un mot de passe temporaire aléatoire (l'utilisateur le changera)
     const tokenInvitation = crypto.randomBytes(32).toString('hex');
     const motDePasseTemp  = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
 
     const user = await User.create({
-      nom,
-      email,
-      role,
+      nom, email, role,
       mot_de_passe: motDePasseTemp,
       invitation_token: tokenInvitation,
       invitation_en_attente: true,
       actif: true,
     });
 
-    // Envoyer l'email
     const lien = `${process.env.FRONTEND_URL}/definir-mot-de-passe/${tokenInvitation}`;
 
     await envoyerEmail({
@@ -111,18 +108,13 @@ router.post('/inviter', verifierToken, autoriserRoles('admin'), async (req, res)
         <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">
           <h2 style="color: #0f172a;">Bienvenue sur DGS Tickets, ${nom} 👋</h2>
           <p style="color: #475569;">Votre compte a été créé avec le rôle <strong>${role}</strong>.</p>
-          <p style="color: #475569;">Cliquez sur le bouton ci-dessous pour définir votre mot de passe et accéder à la plateforme :</p>
+          <p style="color: #475569;">Cliquez sur le bouton ci-dessous pour définir votre mot de passe :</p>
           <a href="${lien}" style="
-            display: inline-block;
-            margin: 24px 0;
-            padding: 12px 24px;
-            background: #f97316;
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: bold;
+            display: inline-block; margin: 24px 0; padding: 12px 24px;
+            background: #f97316; color: white; text-decoration: none;
+            border-radius: 8px; font-weight: bold;
           ">Définir mon mot de passe</a>
-          <p style="color: #94a3b8; font-size: 12px;">Ce lien expire dans 24 heures. Si vous n'attendiez pas cet email, ignorez-le.</p>
+          <p style="color: #94a3b8; font-size: 12px;">Ce lien expire dans 24 heures.</p>
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
           <p style="color: #94a3b8; font-size: 12px;">DGS Africa — Direction Technique</p>
         </div>
@@ -150,25 +142,22 @@ router.post('/definir-mot-de-passe/:token', async (req, res) => {
     }
 
     const user = await User.findOne({ where: { invitation_token: token } });
-
     if (!user) {
       return res.status(404).json({ status: 'error', message: 'Lien invalide ou expiré' });
     }
 
-    const hash = await bcrypt.hash(mot_de_passe, 10);
-
-    user.mot_de_passe          = hash;
+    user.mot_de_passe          = await bcrypt.hash(mot_de_passe, 10);
     user.invitation_token      = null;
     user.invitation_en_attente = false;
     await user.save();
 
-    res.json({ status: 'success', message: 'Mot de passe défini avec succès. Vous pouvez maintenant vous connecter.' });
+    res.json({ status: 'success', message: 'Mot de passe défini. Vous pouvez maintenant vous connecter.' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
 
-// ─── GET /auth (liste users — admin) ─────────────────────────────────────────
+// ─── GET /auth ────────────────────────────────────────────────────────────────
 router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
   try {
     const users = await User.findAll({ attributes: ['id', 'nom', 'email', 'role'] });
