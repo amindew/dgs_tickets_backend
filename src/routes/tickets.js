@@ -172,8 +172,12 @@ router.post('/', verifierToken,
 );
 
 // GET /tickets/:id — Detail d'un ticket (RG-08)
-router.get('/:id', verifierToken, async (req, res) => {
+
+  router.get('/:id', verifierToken, async (req, res) => {
+    console.log('📨 GET /tickets reçu');
+  console.log('🔍 User depuis token:', req.user);
   try {
+    
     const ticket = await Ticket.findByPk(req.params.id, {
       include: [
         { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'] },
