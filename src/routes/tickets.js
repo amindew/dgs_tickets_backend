@@ -86,8 +86,8 @@ console.log('WHERE CLAUSE =', whereClause);
 const tickets = await Ticket.findAll({
   where: whereClause,
   include: [
-    { model: User, as: 'assigne', attributes: ['id', 'nom', 'email'] },
-    { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
+    { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'], required: false },
+    { model: User, as: 'createur', attributes: ['id', 'nom', 'email'], required: false },
   ],
   order: [['ouvert_le', 'DESC']],
 });
