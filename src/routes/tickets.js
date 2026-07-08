@@ -281,12 +281,21 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       console.log("📢 Envoi notif statut à :", ticket.cree_par, ticket.assigne_id);
 
       if (ticket.cree_par) {
-        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-      }
-
+    const createur = await User.findByPk(ticket.cree_par, {
+      attributes: ['id', 'role']
+    });
+    if (createur && createur.role !== 'technicien') {
+      io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+    }
+  }
       if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-      }
+    const assigne = await User.findByPk(ticket.assigne_id, {
+      attributes: ['id', 'role']
+    });
+    if (assigne && assigne.role !== 'technicien') {
+      io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+    }
+  }
 
       // 🔥 TEMPS RÉEL
       io.emit('ticket_mis_a_jour', {
