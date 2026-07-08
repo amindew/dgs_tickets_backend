@@ -1,0 +1,43 @@
+[33md6cdfa7[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdevelop[m[33m, [m[1;31morigin/develop[m[33m)[m ajout notification email + temps reel sur assignation ticket
+[33m6c3abd7[m rectifications
+[33m62a0572[m rectifications
+[33m54a5fad[m rectifications
+[33mb377ad7[m rectifications
+[33mdcc3180[m Sla
+[33md32ad53[m message email creation utilisateur
+[33m01e5cbc[m message email creation utilisateur
+[33m0132fb1[m Rectifications commentaires
+[33m5d4c39e[m J9 Tableau de bord KPI (tickets ouverts, temps moyen de résolution, tickets en retard)
+[33ma49463d[m J8 persistence des notification + temps reel
+[33m71f66a0[m Merge branch 'develop' of https://github.com/amindew/dgs_tickets_backend into develop
+[33m9abb84d[m J8 Notifications
+[33m0161337[m Correction filtre
+[33m33d8511[m J8 : Endpoint SLA + KPI stats + route stats branchee
+[33m9818851[m J8 Notifications
+[33m5cf1677[m Rectifications
+[33m713695f[m J7 rectification database.js
+[33m417340c[m J7 rectification Pieces Jointes
+[33mb6f1775[m Merge branch 'develop' of https://github.com/amindew/dgs_tickets_backend into develop
+[33m7d49ea9[m J7 Pieces Jointes et filtres
+[33mec0ccbb[m j7
+[33md1f7220[m jour6
+[33mb446f88[m J6 commentaires
+[33m2b2afbd[m Affichage Historique + champs email et telephone dans le formulaire de creation de ticket
+[33m492add8[m Merge develop, resolution conflit tickets.js
+[33m2d91180[m jour 5
+[33m1984e25[m J5 historique changements de statut
+[33m400223d[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m Merge develop
+[33mb1bc626[m jour 4
+[33m926d4a9[m rectifications J4
+[33md5fe93f[m Ajout etat actif et transformation de roles
+[33mee4dc3d[m J4 ajout seeders, createTechnicien et  createResponsable
+[33me685cea[m J3 : transitions statut + regles metier (Personne C)
+[33m73382ac[m J3 CRUD tickets
+[33m25bc2b7[m J2 : middleware verifierToken + autoriserRoles (Personne C)
+[33m6a769fd[m Merge pull request #1 from fmbaye09/develop
+[33m9c26d27[m  correction de l erreur sur jwt
+[33m67474f6[m J2 Implémentation de l'authentification JWT et du contrôle d'accès par rôle (admin, agent, client) ; hachage des mots de passe (bcrypt),
+[33mdd765e2[m J1 : correction gitignore
+[33m09c7441[m J1 : Initialisation backend  et migrations
+[33m6cc1896[m debinitialisation
+[33m1ad428d[m[33m ([m[1;32mmain[m[33m)[m Initial commit

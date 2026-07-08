@@ -345,7 +345,10 @@ router.patch('/:id/assignation', verifierToken,
       ticket.assigne_id = assigne_id;
       await ticket.save();
 
+      const io = req.app.get('io');
+
       // 🔔 Notification temps réel
+    if (io) {
       io.to(`user_${assigne_id}`).emit('notification', {
         type: 'ticket_assigne',
         ticket_id: ticket.id,
@@ -354,6 +357,7 @@ router.patch('/:id/assignation', verifierToken,
         message: `Le ticket ${ticket.reference} vous a été assigné`,
         date: new Date().toISOString(),
       });
+    }
 
       // 📧 Notification par email (ne bloque pas la réponse si ça échoue)
       try {
