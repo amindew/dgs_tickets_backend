@@ -86,8 +86,8 @@ console.log('WHERE CLAUSE =', whereClause);
 const tickets = await Ticket.findAll({
   where: whereClause,
   include: [
-    { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'], required: false },
-    { model: User, as: 'createur', attributes: ['id', 'nom', 'email'], required: false },
+    { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email', 'photo_url'], required: false },
+    { model: User, as: 'createur', attributes: ['id', 'nom', 'email', 'photo_url'], required: false },
   ],
   order: [['ouvert_le', 'DESC']],
 });
@@ -180,8 +180,8 @@ router.post('/', verifierToken,
     
     const ticket = await Ticket.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email'] },
-        { model: User, as: 'createur', attributes: ['id', 'nom', 'email'] },
+        { model: User, as: 'assigne',  attributes: ['id', 'nom', 'email', 'photo_url'] },
+        { model: User, as: 'createur', attributes: ['id', 'nom', 'email', 'photo_url'] },
       ],
     });
 
@@ -310,7 +310,7 @@ router.get('/:id/historique', verifierToken, async (req, res) => {
       include: [{
         model: User,
         as:    'modificateur',
-        attributes: ['id', 'nom', 'role'],
+        attributes: ['id', 'nom', 'role', 'photo_url'],
       }],
       order: [['modifie_le', 'ASC']],
     });
@@ -389,12 +389,12 @@ console.log('========================');
 
     const commentaireComplet = await Commentaire.findByPk(commentaire.id, {
       include: [
-        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] },
+        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role', 'photo_url'] },
         {
           model: Commentaire,
           as: 'reponse_a',
           attributes: ['id', 'contenu'],
-          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom'] }]
+          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'photo_url'] }]
         }
       ]
     });
@@ -458,12 +458,12 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
     const commentaires = await Commentaire.findAll({
       where: { ticket_id: req.params.id },
       include: [
-        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] },
+        { model: User, as: 'auteur', attributes: ['id', 'nom', 'role', 'photo_url'] },
         {
           model: Commentaire,
           as: 'reponse_a',
           attributes: ['id', 'contenu'],
-          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom'] }]
+          include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'photo_url'] }]
         }
       ],
       order: [['cree_le', 'ASC']],
@@ -478,7 +478,7 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
 router.delete('/:id/commentaires/:commentaireId', verifierToken, async (req, res) => {
   try {
     const commentaire = await Commentaire.findByPk(req.params.commentaireId, {
-      include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role'] }]
+      include: [{ model: User, as: 'auteur', attributes: ['id', 'nom', 'role', 'photo_url'] }]
     });
 
     if (!commentaire) {

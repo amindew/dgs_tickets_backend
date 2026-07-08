@@ -31,7 +31,11 @@ actif: {
 },
 invitation_token: { type: DataTypes.STRING, allowNull: true },
 invitation_en_attente: { type: DataTypes.BOOLEAN, defaultValue: false },
+invitation_token: { type: DataTypes.STRING, allowNull: true },
+invitation_en_attente: { type: DataTypes.BOOLEAN, defaultValue: false },
+photo_url: { type: DataTypes.STRING, allowNull: true },
 });
+
 // A la fin du fichier User.js, avant return User
 User.associate = (models) => {
   User.hasMany(models.Ticket, { foreignKey: 'cree_par',  as: 'ticketsCrees' });

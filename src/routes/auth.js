@@ -65,10 +65,10 @@ router.post('/login', async (req, res) => {
     );
 
     res.json({
-      status: 'success',
-      message: 'Connexion réussie',
-      data: { token, role: user.role, nom: user.nom, id: user.id }
-    });
+  status: 'success',
+  message: 'Connexion réussie',
+  data: { token, role: user.role, nom: user.nom, id: user.id, photo_url: user.photo_url }
+});
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
@@ -162,6 +162,44 @@ router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
   try {
     const users = await User.findAll({ attributes: ['id', 'nom', 'email', 'role'] });
     res.json({ status: 'success', data: users });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// ─── PATCH /auth/mot-de-passe ─────────────────────────────────────────────────
+router.patch('/mot-de-passe', verifierToken, async (req, res) => {
+  try {
+    const { ancien_mot_de_passe, nouveau_mot_de_passe } = req.body;
+
+    if (!ancien_mot_de_passe || !nouveau_mot_de_passe) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Ancien et nouveau mot de passe requis',
+      });
+    }
+
+    if (nouveau_mot_de_passe.length < 8) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Le nouveau mot de passe doit faire au moins 8 caractères',
+      });
+    }
+
+    const user = await User.findByPk(req.user.id);
+
+    const valide = await bcrypt.compare(ancien_mot_de_passe, user.mot_de_passe);
+    if (!valide) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Ancien mot de passe incorrect',
+      });
+    }
+
+    user.mot_de_passe = await bcrypt.hash(nouveau_mot_de_passe, 10);
+    await user.save();
+
+    res.json({ status: 'success', message: 'Mot de passe mis à jour avec succès' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }

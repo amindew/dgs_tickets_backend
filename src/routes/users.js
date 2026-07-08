@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const { User } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
+const upload = require('../config/multer');
 
 // GET /users — Lister utilisateurs (admin) ou filtrer par role (admin + responsable)
 router.get('/', verifierToken, autoriserRoles('admin', 'responsable'), async (req, res) => {
@@ -11,9 +12,9 @@ router.get('/', verifierToken, autoriserRoles('admin', 'responsable'), async (re
     const whereClause = role ? { role } : {};
 
     const users = await User.findAll({
-      where: whereClause,
-      attributes: ['id', 'nom', 'email', 'role', 'actif'],
-    });
+  where: whereClause,
+  attributes: ['id', 'nom', 'email', 'role', 'actif', 'photo_url'],
+});
     res.json({ status: 'success', data: users });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -102,4 +103,26 @@ router.patch('/:id/actif', verifierToken, autoriserRoles('admin'), async (req, r
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
+
+// POST /users/photo — Upload de sa propre photo de profil
+router.post('/photo', verifierToken, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ status: 'error', message: 'Aucun fichier reçu' });
+    }
+
+    const user = await User.findByPk(req.user.id);
+    user.photo_url = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    res.json({
+      status: 'success',
+      message: 'Photo de profil mise à jour',
+      data: { photo_url: user.photo_url },
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 module.exports = router;
