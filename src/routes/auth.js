@@ -170,4 +170,3 @@ router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
 
 
 module.exports = router;
-module.exports.envoyerEmail = envoyerEmail;

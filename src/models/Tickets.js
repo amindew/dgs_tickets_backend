@@ -78,11 +78,6 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
 
-    assigne_le: {
-    type: DataTypes.DATE,
-    allowNull: true
-},
-
     duree_resolution_min: {
       type: DataTypes.INTEGER,
       allowNull: true,

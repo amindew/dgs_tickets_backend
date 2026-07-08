@@ -4,7 +4,6 @@ const { Op } = require('sequelize');
 const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
-const { envoyerEmail } = require('./auth');
 const {
   transitionAutorisee,
   messageErreurTransition
@@ -331,51 +330,22 @@ router.patch('/:id/assignation', verifierToken,
     try {
       const { assigne_id } = req.body;
       const ticket = await Ticket.findByPk(req.params.id);
+
       if (!ticket) {
         return res.status(404).json({
           status: 'error', message: 'Ticket non trouve',
         });
       }
+
       const technicien = await User.findByPk(assigne_id);
       if (!technicien || technicien.role !== 'technicien') {
         return res.status(400).json({
           status: 'error', message: 'Technicien invalide',
         });
       }
+
       ticket.assigne_id = assigne_id;
       await ticket.save();
-
-      const io = req.app.get('io');
-
-      // 🔔 Notification temps réel
-    if (io) {
-      io.to(`user_${assigne_id}`).emit('notification', {
-        type: 'ticket_assigne',
-        ticket_id: ticket.id,
-        reference: ticket.reference,
-        titre: ticket.titre,
-        message: `Le ticket ${ticket.reference} vous a été assigné`,
-        date: new Date().toISOString(),
-      });
-    }
-
-      // 📧 Notification par email (ne bloque pas la réponse si ça échoue)
-      try {
-        await envoyerEmail({
-          to: technicien.email,
-          subject: `Nouveau ticket assigné : ${ticket.reference}`,
-          html: `
-            <h2>Un ticket vous a été assigné</h2>
-            <p><strong>${ticket.titre}</strong></p>
-            <p>Référence : ${ticket.reference}</p>
-            <p>Priorité : ${ticket.priorite}</p>
-            <p><a href="${process.env.FRONTEND_URL}/tickets/${ticket.id}">Voir le ticket</a></p>
-          `,
-        });
-      } catch (emailError) {
-        console.error('Erreur envoi email assignation:', emailError.message);
-      }
-
       res.json({ status: 'success', message: 'Ticket assigne', data: ticket });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
@@ -634,29 +604,10 @@ router.get('/:id/sla', verifierToken, async (req, res) => {
     }
 
     const maintenant = new Date();
+    const ouverture  = new Date(ticket.ouvert_le);
+    const fermeture  = ticket.resolu_le ? new Date(ticket.resolu_le) : maintenant;
+    const dureeMin   = Math.round((fermeture - ouverture) / 60000);
 
-// Si le ticket n'est pas encore assigné,
-// le SLA ne démarre pas.
-if (!ticket.assigne_le) {
-  return res.json({
-    status: 'success',
-    data: {
-      duree_actuelle_min: 0,
-      duree_resolution_min: null,
-      seuil_min: null,
-      depasse: false,
-      est_resolu: ticket.statut === 'resolu',
-      pourcentage: 0
-    }
-  });
-}
-
-const debut = new Date(ticket.assigne_le);
-const fin = ticket.resolu_le
-  ? new Date(ticket.resolu_le)
-  : maintenant;
-
-const dureeMin = Math.round((fin - debut) / 60000);
     // Seuils SLA selon la priorite (en minutes)
     const SEUILS = {
       critique: 60,   // 1 heure
