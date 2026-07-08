@@ -284,9 +284,6 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
         io.to(`user_${ticket.cree_par}`).emit('notification', notification);
       }
 
-      if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-      }
 
       // 🔥 TEMPS RÉEL
       io.emit('ticket_mis_a_jour', {
