@@ -125,4 +125,17 @@ router.post('/photo', verifierToken, upload.single('photo'), async (req, res) =>
   }
 });
 
+// DELETE /users/photo — Supprimer sa propre photo de profil
+router.delete('/photo', verifierToken, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    user.photo_url = null;
+    await user.save();
+
+    res.json({ status: 'success', message: 'Photo de profil supprimée' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
 module.exports = router;
