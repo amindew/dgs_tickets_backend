@@ -117,7 +117,6 @@ console.log('======================');
     res.status(500).json({ status: 'error', message: error.message });
   }
 });
-
 // POST /tickets — Creer un ticket (admin ou responsable seulement)
 router.post('/', verifierToken,
   autoriserRoles('admin', 'responsable'),
