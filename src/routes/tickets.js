@@ -8,6 +8,8 @@ const {
   transitionAutorisee,
   messageErreurTransition
 } = require('../services/ticketService');
+const fs = require('fs');
+const path = require('path');
 
 // GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
@@ -517,11 +519,12 @@ router.post('/:id/pieces', verifierToken,
         });
       }
       const piece = await PieceJointe.create({
-        ticket_id:   ticket.id,
-        url:         `/uploads/${req.file.filename}`,
-        nom_fichier: req.file.originalname,
-        taille_ko:   Math.round(req.file.size / 1024),
-      });
+  ticket_id:   ticket.id,
+  url:         `/uploads/${req.file.filename}`,
+  nom_fichier: req.file.originalname,
+  taille_ko:   Math.round(req.file.size / 1024),
+  uploade_par: req.user.id,
+});
 
 const io = req.app.get('io');
 
@@ -583,6 +586,7 @@ router.get('/:id/pieces', verifierToken, async (req, res) => {
   try {
     const pieces = await PieceJointe.findAll({
       where: { ticket_id: req.params.id },
+      include: [{ model: User, as: 'uploadeur', attributes: ['id', 'nom'] }],
     });
     res.json({ status: 'success', data: pieces });
   } catch (error) {
@@ -627,6 +631,66 @@ router.get('/:id/sla', verifierToken, async (req, res) => {
         pourcentage:           Math.min(Math.round((dureeMin / seuil) * 100), 100),
       }
     });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// DELETE /tickets/:id/pieces/:pieceId — Supprimer une piece jointe (uploadeur uniquement)
+router.delete('/:id/pieces/:pieceId', verifierToken, async (req, res) => {
+  try {
+    const piece = await PieceJointe.findByPk(req.params.pieceId);
+
+    if (!piece) {
+      return res.status(404).json({ status: 'error', message: 'Piece jointe non trouvee' });
+    }
+
+    if (String(piece.uploade_par) !== String(req.user.id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Vous ne pouvez supprimer que vos propres pieces jointes',
+      });
+    }
+
+    const cheminFichier = path.join(__dirname, '../../uploads', path.basename(piece.url));
+    fs.unlink(cheminFichier, (err) => {
+      if (err) console.error('Erreur suppression fichier:', err.message);
+    });
+
+    await piece.destroy();
+
+    res.json({ status: 'success', message: 'Piece jointe supprimee' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// DELETE /tickets/:id — Supprimer un ticket (admin ou responsable)
+router.delete('/:id', verifierToken, autoriserRoles('admin', 'responsable'), async (req, res) => {
+  try {
+    const ticket = await Ticket.findByPk(req.params.id);
+
+    if (!ticket) {
+      return res.status(404).json({ status: 'error', message: 'Ticket non trouve' });
+    }
+
+    // Supprimer les fichiers physiques des pieces jointes
+    const pieces = await PieceJointe.findAll({ where: { ticket_id: ticket.id } });
+    for (const piece of pieces) {
+      const cheminFichier = path.join(__dirname, '../../uploads', path.basename(piece.url));
+      fs.unlink(cheminFichier, (err) => {
+        if (err) console.error('Erreur suppression fichier:', err.message);
+      });
+    }
+
+    // Supprimer les donnees liees avant le ticket lui-meme
+    await PieceJointe.destroy({ where: { ticket_id: ticket.id } });
+    await Commentaire.destroy({ where: { ticket_id: ticket.id } });
+    await HistoriqueStatut.destroy({ where: { ticket_id: ticket.id } });
+
+    await ticket.destroy();
+
+    res.json({ status: 'success', message: 'Ticket supprime avec succes' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }

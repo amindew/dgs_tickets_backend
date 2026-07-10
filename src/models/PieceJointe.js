@@ -25,6 +25,10 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      uploade_par: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       tableName: 'PiecesJointes',
@@ -35,6 +39,10 @@ module.exports = (sequelize) => {
   PieceJointe.associate = (models) => {
     PieceJointe.belongsTo(models.Ticket, {
       foreignKey: 'ticket_id',
+    });
+    PieceJointe.belongsTo(models.User, {
+      foreignKey: 'uploade_par',
+      as: 'uploadeur',
     });
   };
 
