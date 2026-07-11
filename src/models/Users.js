@@ -40,6 +40,10 @@ photo_url: { type: DataTypes.STRING, allowNull: true },
 User.associate = (models) => {
   User.hasMany(models.Ticket, { foreignKey: 'cree_par',  as: 'ticketsCrees' });
   User.hasMany(models.Ticket, { foreignKey: 'assigne_id', as: 'ticketsAssignes' });
+  User.hasMany(models.Notification, {
+    foreignKey: 'user_id',
+    as: 'notifications'
+});
 };
 
 return User;

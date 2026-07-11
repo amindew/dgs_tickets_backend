@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
+const { Ticket, User, HistoriqueStatut, Commentaire ,  Notification} = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
 const {
@@ -419,14 +419,41 @@ console.log('========================');
         date: new Date().toISOString(),
       };
 
+      const creerNotification = async (userId) => {
+
+  if (!userId) return;
+
+  await Notification.create({
+    user_id: userId,
+    ticket_id: ticket.id,
+    titre: `Nouveau commentaire - ${ticket.reference}`,
+    message: notification.message,
+    type: notification.type
+  });
+
+};
+
       // 🔔 notif
       if (ticket.cree_par) {
-        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-      }
 
-      if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
-      }
+    await creerNotification(ticket.cree_par);
+
+    io.to(`user_${ticket.cree_par}`)
+      .emit('notification', notification);
+
+}
+
+if (
+    ticket.assigne_id &&
+    ticket.assigne_id !== ticket.cree_par
+) {
+
+    await creerNotification(ticket.assigne_id);
+
+    io.to(`user_${ticket.assigne_id}`)
+      .emit('notification', notification);
+
+}
 
       // ⚡ temps réel (affichage direct)
       if (ticket.cree_par) {

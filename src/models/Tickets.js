@@ -101,6 +101,12 @@ module.exports = (sequelize) => {
       foreignKey: 'assigne_id',
       as: 'assigne',
     });
+
+Ticket.hasMany(models.Notification, {
+  foreignKey: 'ticket_id',
+  as: 'notifications',
+});
+
   };
 
   return Ticket;
