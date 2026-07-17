@@ -3,13 +3,18 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const { User } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
+const upload = require('../config/multer');
 
-// GET /users — Lister tous les utilisateurs (admin seulement)
-router.get('/', verifierToken, autoriserRoles('admin'), async (req, res) => {
+// GET /users — Lister utilisateurs (admin) ou filtrer par role (admin + responsable)
+router.get('/', verifierToken, autoriserRoles('admin', 'responsable'), async (req, res) => {
   try {
+    const { role } = req.query;
+    const whereClause = role ? { role } : {};
+
     const users = await User.findAll({
-      attributes: ['id', 'nom', 'email', 'role', 'actif'],
-    });
+  where: whereClause,
+  attributes: ['id', 'nom', 'email', 'role', 'actif', 'photo_url'],
+});
     res.json({ status: 'success', data: users });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
@@ -94,6 +99,40 @@ router.patch('/:id/actif', verifierToken, autoriserRoles('admin'), async (req, r
       message: actif ? 'Utilisateur reactive' : 'Utilisateur desactive',
       data: { id: user.id, nom: user.nom, email: user.email, role: user.role, actif: user.actif }
     });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// POST /users/photo — Upload de sa propre photo de profil
+router.post('/photo', verifierToken, upload.single('photo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ status: 'error', message: 'Aucun fichier reçu' });
+    }
+
+    const user = await User.findByPk(req.user.id);
+    user.photo_url = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    res.json({
+      status: 'success',
+      message: 'Photo de profil mise à jour',
+      data: { photo_url: user.photo_url },
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// DELETE /users/photo — Supprimer sa propre photo de profil
+router.delete('/photo', verifierToken, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    user.photo_url = null;
+    await user.save();
+
+    res.json({ status: 'success', message: 'Photo de profil supprimée' });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message });
   }
