@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     type: {
-      type: DataTypes.ENUM('statut_change', 'assignation', 'commentaire'),
+      type: DataTypes.ENUM('statut_change', 'assignation', 'commentaire','piece_jointe'),
       allowNull: false,
     },
     titre:      { type: DataTypes.STRING,  allowNull: false },
