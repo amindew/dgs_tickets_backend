@@ -276,7 +276,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       });
 
       // Envoyer via WebSocket si l'utilisateur est connecté
-      if (io && userRole !== 'technicien') {
+      if (io) {
         io.to(`user_${userId}`).emit('notification', {
           id:             notif.id,
           type:           'statut_change',
