@@ -57,7 +57,7 @@ module.exports = {
       },
 
       // Permet d'afficher les notifications non lues
-      lu: {
+      lue: {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
         allowNull: false
@@ -81,7 +81,7 @@ module.exports = {
     // Index pour récupérer rapidement les notifications d'un utilisateur
     await queryInterface.addIndex(
       'Notifications',
-      ['user_id', 'lu']
+      ['user_id', 'lue']
     );
 
   },
