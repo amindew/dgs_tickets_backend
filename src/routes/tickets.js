@@ -264,7 +264,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       if (!userId) return;
 
       // Sauvegarder en base
-      await Notification.create({
+      const notif = await Notification.create({
         user_id:    userId,
         ticket_id:  ticket.id,
         type:       'statut_change',
@@ -278,6 +278,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       // Envoyer via WebSocket si l'utilisateur est connecté
       if (io && userRole !== 'technicien') {
         io.to(`user_${userId}`).emit('notification', {
+          id:             notif.id,
           type:           'statut_change',
           ticket_id:      ticket.id,
           reference:      ticket.reference,
@@ -433,24 +434,39 @@ console.log('========================');
         ? commentaire.contenu.slice(0, 60) + '...'
         : commentaire.contenu;
 
-      const notification = {
-        type: 'nouveau_commentaire',
-        ticket_id: ticket.id,
-        reference: ticket.reference,
-        titre: ticket.titre,
-        contenu: commentaire.contenu,
-        auteur: req.user.nom,
-        message: `${req.user.nom} a commenté sur ${ticket.reference} : "${extrait}"`,
-        date: new Date().toISOString(),
+      const messageNotif = `${req.user.nom} a commenté sur ${ticket.reference} : "${extrait}"`;
+
+      const creerEtEnvoyerNotifCommentaire = async (userId) => {
+        if (!userId) return;
+
+        const notif = await Notification.create({
+          user_id:    userId,
+          ticket_id:  ticket.id,
+          type:       'commentaire',
+          titre:      `Nouveau commentaire sur ${ticket.reference}`,
+          message:    messageNotif,
+          lue:        false,
+          date_envoi: new Date(),
+        });
+
+        io.to(`user_${userId}`).emit('notification', {
+          id:        notif.id,
+          type:      'nouveau_commentaire',
+          ticket_id: ticket.id,
+          reference: ticket.reference,
+          titre:     ticket.titre,
+          contenu:   commentaire.contenu,
+          auteur:    req.user.nom,
+          message:   messageNotif,
+          date:      new Date().toISOString(),
+        });
       };
 
       // 🔔 notif
-      if (ticket.cree_par) {
-        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
-      }
+      await creerEtEnvoyerNotifCommentaire(ticket.cree_par);
 
       if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-        io.to(`user_${ticket.assigne_id}`).emit('notification', notification);
+        await creerEtEnvoyerNotifCommentaire(ticket.assigne_id);
       }
 
       // ⚡ temps réel (affichage direct)
@@ -554,28 +570,42 @@ router.post('/:id/pieces', verifierToken,
 const io = req.app.get('io');
 
 if (io) {
-  const notification = {
-    type: 'nouvelle_piece_jointe',
-    ticket_id: ticket.id,
-    reference: ticket.reference,
-    titre: ticket.titre,
-    nom_fichier: piece.nom_fichier,
-    auteur: req.user.nom,
-    message: `${req.user.nom} a joint le fichier "${piece.nom_fichier}" sur le ticket ${ticket.reference}`,
-    date: new Date().toISOString(),
-  };
+  const messageNotif = `${req.user.nom} a joint le fichier "${piece.nom_fichier}" sur le ticket ${ticket.reference}`;
 
-  const envoyer = (userId) => {
-    io.to(`user_${userId}`).emit('notification', notification);
+  const creerEtEnvoyerNotifPiece = async (userId) => {
+    if (!userId) return;
+
+    const notif = await Notification.create({
+      user_id:    userId,
+      ticket_id:  ticket.id,
+      type:       'piece_jointe',
+      titre:      `Nouvelle pièce jointe sur ${ticket.reference}`,
+      message:    messageNotif,
+      lue:        false,
+      date_envoi: new Date(),
+    });
+
+    io.to(`user_${userId}`).emit('notification', {
+      id:          notif.id,
+      type:        'nouvelle_piece_jointe',
+      ticket_id:   ticket.id,
+      reference:   ticket.reference,
+      titre:       ticket.titre,
+      nom_fichier: piece.nom_fichier,
+      auteur:      req.user.nom,
+      message:     messageNotif,
+      date:        new Date().toISOString(),
+    });
+
     io.to(`user_${userId}`).emit('piece_jointe_ajoutee', {
       ticket_id: ticket.id,
       piece: piece
     });
   };
 
-  if (ticket.cree_par) envoyer(ticket.cree_par);
+  await creerEtEnvoyerNotifPiece(ticket.cree_par);
   if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
-    envoyer(ticket.assigne_id);
+    await creerEtEnvoyerNotifPiece(ticket.assigne_id);
   }
 }
       res.status(201).json({
