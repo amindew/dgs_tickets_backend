@@ -5,6 +5,8 @@ const http       = require('http');
 const { Server } = require('socket.io');
 const path       = require('path');
 
+const jwt = require('jsonwebtoken');
+
 const authRoutes   = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
 const userRoutes   = require('./routes/users');
@@ -36,15 +38,31 @@ app.use('/users',   userRoutes);
 app.use('/stats',   statsRoutes); // <- C
 app.use('/notifications', notifRoutes);
 
+// Authentifier la connexion WebSocket via le JWT (empêche un client de
+// rejoindre la room d'un autre utilisateur en envoyant un userId arbitraire)
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+
+  if (!token) {
+    return next(new Error('Authentification requise'));
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return next(new Error('Token invalide ou expiré'));
+    }
+    socket.userId = decoded.id;
+    next();
+  });
+});
+
 // Gestion des connexions WebSocket
 io.on('connection', (socket) => {
-  console.log('Client connecte :', socket.id);
+  console.log('Client connecte :', socket.id, '- utilisateur :', socket.userId);
 
-  socket.on('rejoindre', (userId) => {
-    console.log("Utilisateur rejoint :", userId);
-    socket.join(`user_${userId}`);
-    console.log(`Utilisateur ${userId} a rejoint sa room`);
-  });
+  // La room est déterminée uniquement à partir du token vérifié ci-dessus,
+  // jamais à partir d'une valeur fournie par le client.
+  socket.join(`user_${socket.userId}`);
 
   socket.on('disconnect', () => {
     console.log('Client deconnecte :', socket.id);

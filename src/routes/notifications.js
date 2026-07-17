@@ -13,7 +13,7 @@ router.get('/', verifierToken, async (req, res) => {
         as: 'ticket',
         attributes: ['id', 'reference', 'titre'],
       }],
-      order: [['date_envoi', 'DESC']],
+      order: [['createdAt', 'DESC']],
       limit: 50, // les 50 dernières
     });
 

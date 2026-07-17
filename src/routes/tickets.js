@@ -272,7 +272,6 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
         message:    `Le statut du ticket "${ticket.titre}" est passé de ` +
                     `"${statutAvant}" à "${nouveau_statut}" par ${req.user.nom}`,
         lue:        false,
-        date_envoi: new Date(),
       });
 
       // Envoyer via WebSocket si l'utilisateur est connecté
@@ -371,6 +370,32 @@ router.patch('/:id/assignation', verifierToken,
 
       ticket.assigne_id = assigne_id;
       await ticket.save();
+
+      const io = req.app.get('io');
+      if (io) {
+        const messageNotif = `Le ticket ${ticket.reference} vous a été assigné par ${req.user.nom}`;
+
+        const notif = await Notification.create({
+          user_id:   technicien.id,
+          ticket_id: ticket.id,
+          type:      'assignation',
+          titre:     `Ticket ${ticket.reference} assigné`,
+          message:   messageNotif,
+          lue:       false,
+        });
+
+        io.to(`user_${technicien.id}`).emit('notification', {
+          id:         notif.id,
+          type:       'assignation',
+          ticket_id:  ticket.id,
+          reference:  ticket.reference,
+          titre:      ticket.titre,
+          assigne_par: req.user.nom,
+          message:    messageNotif,
+          date:       new Date().toISOString(),
+        });
+      }
+
       res.json({ status: 'success', message: 'Ticket assigne', data: ticket });
     } catch (error) {
       res.status(500).json({ status: 'error', message: error.message });
@@ -380,7 +405,6 @@ router.patch('/:id/assignation', verifierToken,
 
 // POST /tickets/:id/commentaires
 router.post('/:id/commentaires', verifierToken, async (req, res) => {
-  console.log('AUTEUR DU COMMENTAIRE =', req.user);
   try {
     const { contenu } = req.body;
     const ticket = await Ticket.findByPk(req.params.id);
@@ -446,7 +470,6 @@ console.log('========================');
           titre:      `Nouveau commentaire sur ${ticket.reference}`,
           message:    messageNotif,
           lue:        false,
-          date_envoi: new Date(),
         });
 
         io.to(`user_${userId}`).emit('notification', {
@@ -582,7 +605,6 @@ if (io) {
       titre:      `Nouvelle pièce jointe sur ${ticket.reference}`,
       message:    messageNotif,
       lue:        false,
-      date_envoi: new Date(),
     });
 
     io.to(`user_${userId}`).emit('notification', {
@@ -599,7 +621,10 @@ if (io) {
 
     io.to(`user_${userId}`).emit('piece_jointe_ajoutee', {
       ticket_id: ticket.id,
-      piece: piece
+      piece: {
+        ...piece.toJSON(),
+        uploadeur: { id: req.user.id, nom: req.user.nom },
+      },
     });
   };
 
