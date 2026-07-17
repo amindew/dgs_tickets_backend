@@ -11,6 +11,11 @@ const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 async function envoyerEmail({ to, subject, html }) {
   const destinataire = to;
 
+  if (!process.env.RESEND_API_KEY) {
+    console.log(`[email non envoyé — RESEND_API_KEY absente] À: ${destinataire} | Sujet: ${subject}`);
+    return { id: 'local-dev-no-email' };
+  }
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
