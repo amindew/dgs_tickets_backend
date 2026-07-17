@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Op } = require('sequelize');
-const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
+const { Ticket, User, HistoriqueStatut, Commentaire, Notification } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
 const {
@@ -260,34 +260,59 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
     // ✅ SOCKET PROPRE
     const io = req.app.get('io');
 
-    if (io) {
-      console.log("🔥 IO =", io);
-      const labelsStatut = {
-        a_faire: 'À faire', en_cours: 'En cours', bloque: 'Bloqué', resolu: 'Résolu'
-      };
-      const messageCreateur = `Le ticket ${ticket.reference} "${ticket.titre}" est passé de "${labelsStatut[statutAvant] || statutAvant}" à "${labelsStatut[nouveau_statut] || nouveau_statut}" par ${req.user.nom}`;
-      const messageAssigne  = `Statut du ticket ${ticket.reference} que vous gérez : "${labelsStatut[statutAvant] || statutAvant}" → "${labelsStatut[nouveau_statut] || nouveau_statut}"`;
+    const creerEtEnvoyerNotification = async (userId, userRole) => {
+      if (!userId) return;
 
-      const notification = {
-        type: 'statut_change',
-        ticket_id: ticket.id,
-        reference: ticket.reference,
-        titre: ticket.titre,
-        ancien_statut: statutAvant,
-        nouveau_statut: nouveau_statut,
-        modifie_par: req.user.nom,
-        message: messageCreateur,
-        date: new Date().toISOString(),
-      };
+      // Sauvegarder en base
+      await Notification.create({
+        user_id:    userId,
+        ticket_id:  ticket.id,
+        type:       'statut_change',
+        titre:      `Ticket ${ticket.reference} mis à jour`,
+        message:    `Le statut du ticket "${ticket.titre}" est passé de ` +
+                    `"${statutAvant}" à "${nouveau_statut}" par ${req.user.nom}`,
+        lue:        false,
+        date_envoi: new Date(),
+      });
 
-      console.log("📢 Envoi notif statut à :", ticket.cree_par, ticket.assigne_id);
-
-      if (ticket.cree_par) {
-        io.to(`user_${ticket.cree_par}`).emit('notification', notification);
+      // Envoyer via WebSocket si l'utilisateur est connecté
+      if (io && userRole !== 'technicien') {
+        io.to(`user_${userId}`).emit('notification', {
+          type:           'statut_change',
+          ticket_id:      ticket.id,
+          reference:      ticket.reference,
+          titre:          ticket.titre,
+          ancien_statut:  statutAvant,
+          nouveau_statut: nouveau_statut,
+          modifie_par:    req.user.nom,
+          message:        `Statut mis à jour : ${statutAvant} → ${nouveau_statut}`,
+          date:           new Date().toISOString(),
+        });
       }
+    };
 
+    // Notifier le createur
+    if (ticket.cree_par) {
+      const createur = await User.findByPk(ticket.cree_par, {
+        attributes: ['id', 'role']
+      });
+      if (createur) {
+        await creerEtEnvoyerNotification(createur.id, createur.role);
+      }
+    }
 
-      // 🔥 TEMPS RÉEL
+    // Notifier l'assigne
+    if (ticket.assigne_id && ticket.assigne_id !== ticket.cree_par) {
+      const assigne = await User.findByPk(ticket.assigne_id, {
+        attributes: ['id', 'role']
+      });
+      if (assigne) {
+        await creerEtEnvoyerNotification(assigne.id, assigne.role);
+      }
+    }
+
+    // 🔥 TEMPS RÉEL — mise à jour du board pour tous
+    if (io) {
       io.emit('ticket_mis_a_jour', {
         ticket_id: ticket.id,
         statut: nouveau_statut,

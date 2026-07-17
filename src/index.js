@@ -13,6 +13,8 @@ const statsRoutes  = require('./routes/stats'); // <- C
 const app    = express();
 const server = http.createServer(app);
 
+const notifRoutes = require('./routes/notifications');
+
 // Configurer Socket.IO avec CORS
 const io = new Server(server, {
   cors: {
@@ -32,6 +34,7 @@ app.use('/auth',    authRoutes);
 app.use('/tickets', ticketRoutes);
 app.use('/users',   userRoutes);
 app.use('/stats',   statsRoutes); // <- C
+app.use('/notifications', notifRoutes);
 
 // Gestion des connexions WebSocket
 io.on('connection', (socket) => {
