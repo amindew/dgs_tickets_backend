@@ -1,10 +1,27 @@
 const { Ticket } = require('../models');
+const { Op } = require('sequelize');
+
 async function genererReference() {
-  // Compter le nombre total de tickets existants
-  const count = await Ticket.count();
-  // Incrémenter et formater sur 6 chiffres
-  const numero = count + 1;
-  const reference = `INC-${String(numero).padStart(6, '0')}`;
-  return reference; // ex: INC-000001, INC-000045
+  const tickets = await Ticket.findAll({
+    attributes: ['reference'],
+    where: {
+      reference: {
+        [Op.like]: 'INC-%'
+      }
+    }
+  });
+
+  let max = 0;
+
+  for (const ticket of tickets) {
+    const n = parseInt(ticket.reference.replace('INC-', ''), 10);
+
+    if (!isNaN(n) && n > max) {
+      max = n;
+    }
+  }
+
+  return `INC-${String(max + 1).padStart(6, '0')}`;
 }
+
 module.exports = { genererReference };
