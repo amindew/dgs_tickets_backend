@@ -168,8 +168,14 @@ router.post('/', verifierToken,
         data: ticket,
       });
     } catch (error) {
-      res.status(500).json({ status: 'error', message: error.message });
-    }
+  console.error("ERREUR CREATION TICKET");
+  console.error(error);
+
+  res.status(500).json({
+    status: "error",
+    message: error.message
+  });
+}
   }
 );
 
