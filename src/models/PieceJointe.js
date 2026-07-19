@@ -29,6 +29,15 @@ module.exports = (sequelize) => {
         type: DataTypes.UUID,
         allowNull: true,
       },
+      supprime: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      supprime_par: {
+        type: DataTypes.UUID,
+        allowNull: true,
+      },
     },
     {
       tableName: 'PiecesJointes',
@@ -43,6 +52,10 @@ module.exports = (sequelize) => {
     PieceJointe.belongsTo(models.User, {
       foreignKey: 'uploade_par',
       as: 'uploadeur',
+    });
+    PieceJointe.belongsTo(models.User, {
+      foreignKey: 'supprime_par',
+      as: 'suppresseur',
     });
   };
 

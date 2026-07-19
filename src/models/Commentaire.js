@@ -27,6 +27,15 @@ module.exports = (sequelize) => {
   type: DataTypes.UUID,
   allowNull: true
   },
+    supprime: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    supprime_par: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
   });
   Commentaire.associate = (models) => {
     Commentaire.belongsTo(models.Ticket, { foreignKey: 'ticket_id' });
@@ -36,6 +45,9 @@ module.exports = (sequelize) => {
   // Auto-référence pour les réponses
     Commentaire.belongsTo(models.Commentaire, { foreignKey: 'reponse_a_id', as: 'reponse_a' });
     Commentaire.hasMany(models.Commentaire,   { foreignKey: 'reponse_a_id', as: 'reponses' });
+    Commentaire.belongsTo(models.User,   {
+      foreignKey: 'supprime_par', as: 'suppresseur'
+    });
   };
   return Commentaire;
 };

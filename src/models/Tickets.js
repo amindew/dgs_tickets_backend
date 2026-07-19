@@ -88,6 +88,22 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
+
+    supprime: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+
+    supprime_par: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+
+    supprime_le: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   });
 
   // Associations
@@ -100,6 +116,11 @@ module.exports = (sequelize) => {
     Ticket.belongsTo(models.User, {
       foreignKey: 'assigne_id',
       as: 'assigne',
+    });
+
+    Ticket.belongsTo(models.User, {
+      foreignKey: 'supprime_par',
+      as: 'suppresseur',
     });
   };
 

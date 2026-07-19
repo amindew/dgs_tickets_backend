@@ -60,7 +60,7 @@ async function notifierAssignation(io, ticket, technicien, acteur) {
 // GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
   try {
-    const { agent, agents, client, priorite, statut, date_debut, date_fin, sla_depasse } = req.query;
+    const { agent, agents, client, priorite, statut, date_debut, date_fin, sla_depasse, supprime, non_assigne } = req.query;
 
     let agentsFiltre = [];
 
@@ -109,6 +109,8 @@ agentsFiltre = agentsFiltre.filter(Boolean);
   whereClause.assigne_id = {
     [Op.in]: agentsFiltre
   };
+} else if (non_assigne === 'true') {
+  whereClause.assigne_id = null;
 }
     if (client) {
       whereClause.client_nom = { [Op.iLike]: `%${client}%` };
@@ -131,6 +133,12 @@ agentsFiltre = agentsFiltre.filter(Boolean);
         whereClause.ouvert_le[Op.lte] = new Date(date_fin + 'T23:59:59');
       }
     }
+
+    // Par defaut les tickets supprimes (suppression douce) sont exclus des
+    // vues normales ; supprime=true permet au contraire de ne lister que
+    // les tickets supprimes (utilise par le drill-down "tickets supprimes"
+    // du dashboard).
+    whereClause.supprime = supprime === 'true' ? true : { [Op.not]: true };
 
     console.log('======================');
 console.log('QUERY =', req.query);
@@ -551,6 +559,7 @@ router.get('/:id/commentaires', verifierToken, async (req, res) => {
       where: { ticket_id: req.params.id },
       include: [
         { model: User, as: 'auteur', attributes: ['id', 'nom', 'role', 'photo_url'] },
+        { model: User, as: 'suppresseur', attributes: ['id', 'nom'] },
         {
           model: Commentaire,
           as: 'reponse_a',
@@ -580,8 +589,11 @@ router.delete('/:id/commentaires/:commentaireId', verifierToken, async (req, res
    if (String(commentaire.auteur_id) !== String(req.user.id) && req.user.role !== 'admin') {
       return res.status(403).json({ status: 'error', message: 'Non autorisé à supprimer ce commentaire' });
     }
-    const contenuSupprime = commentaire.contenu;
-    await commentaire.destroy();
+    // Suppression douce : le contenu original est conserve en base mais
+    // remplace a l'affichage par "Commentaire supprime par X".
+    commentaire.supprime     = true;
+    commentaire.supprime_par = req.user.id;
+    await commentaire.save();
 
     res.json({ status: 'success', message: 'Commentaire supprimé' });
   } catch (error) {
@@ -696,7 +708,10 @@ router.get('/:id/pieces', verifierToken, async (req, res) => {
   try {
     const pieces = await PieceJointe.findAll({
       where: { ticket_id: req.params.id },
-      include: [{ model: User, as: 'uploadeur', attributes: ['id', 'nom'] }],
+      include: [
+        { model: User, as: 'uploadeur', attributes: ['id', 'nom'] },
+        { model: User, as: 'suppresseur', attributes: ['id', 'nom'] },
+      ],
     });
     res.json({ status: 'success', data: pieces });
   } catch (error) {
@@ -754,7 +769,11 @@ router.delete('/:id/pieces/:pieceId', verifierToken, async (req, res) => {
       if (err) console.error('Erreur suppression fichier:', err.message);
     });
 
-    await piece.destroy();
+    // Suppression douce : le fichier physique est retire du disque mais la
+    // ligne est conservee, affichee comme "Piece jointe supprimee par X".
+    piece.supprime     = true;
+    piece.supprime_par = req.user.id;
+    await piece.save();
 
     res.json({ status: 'success', message: 'Piece jointe supprimee' });
   } catch (error) {
@@ -763,6 +782,9 @@ router.delete('/:id/pieces/:pieceId', verifierToken, async (req, res) => {
 });
 
 // DELETE /tickets/:id — Supprimer un ticket (admin ou responsable)
+// Suppression douce : le ticket et son historique (commentaires, pieces
+// jointes) sont conserves pour le decompte "tickets supprimes" du
+// dashboard, simplement retires des vues normales (Kanban, listes).
 router.delete('/:id', verifierToken, autoriserRoles('admin', 'responsable'), async (req, res) => {
   try {
     const ticket = await Ticket.findByPk(req.params.id);
@@ -771,21 +793,10 @@ router.delete('/:id', verifierToken, autoriserRoles('admin', 'responsable'), asy
       return res.status(404).json({ status: 'error', message: 'Ticket non trouve' });
     }
 
-    // Supprimer les fichiers physiques des pieces jointes
-    const pieces = await PieceJointe.findAll({ where: { ticket_id: ticket.id } });
-    for (const piece of pieces) {
-      const cheminFichier = path.join(__dirname, '../../uploads', path.basename(piece.url));
-      fs.unlink(cheminFichier, (err) => {
-        if (err) console.error('Erreur suppression fichier:', err.message);
-      });
-    }
-
-    // Supprimer les donnees liees avant le ticket lui-meme
-    await PieceJointe.destroy({ where: { ticket_id: ticket.id } });
-    await Commentaire.destroy({ where: { ticket_id: ticket.id } });
-    await HistoriqueStatut.destroy({ where: { ticket_id: ticket.id } });
-
-    await ticket.destroy();
+    ticket.supprime     = true;
+    ticket.supprime_par = req.user.id;
+    ticket.supprime_le  = new Date();
+    await ticket.save();
 
     res.json({ status: 'success', message: 'Ticket supprime avec succes' });
   } catch (error) {

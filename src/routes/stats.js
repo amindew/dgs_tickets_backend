@@ -11,9 +11,13 @@ router.get('/kpi', verifierToken,
       // Un responsable ne voit que les statistiques de ses propres tickets
       // crees ; seul l'admin a une visibilite totale (meme regle que la
       // liste des tickets).
-      const filtreRole = req.user.role === 'responsable'
+      const filtreBaseRole = req.user.role === 'responsable'
         ? { cree_par: req.user.id }
         : {};
+
+      // Les tickets supprimes (suppression douce) ne comptent pas dans les
+      // statistiques normales, ils ont leur propre compteur dedie.
+      const filtreRole = { ...filtreBaseRole, supprime: { [Op.not]: true } };
 
       const total = await Ticket.count({ where: filtreRole });
       const ouverts = await Ticket.count({
@@ -64,6 +68,11 @@ router.get('/kpi', verifierToken,
       const tauxResolution = total > 0
         ? Math.round((resolus / total) * 100)
         : 0;
+
+      const ticketsSupprimes = await Ticket.count({
+        where: { ...filtreBaseRole, supprime: true }
+      });
+
       res.json({
         status: 'success',
         data: {
@@ -72,6 +81,7 @@ router.get('/kpi', verifierToken,
           tickets_resolus:              resolus,
           tickets_bloques:              bloques,
           critiques_non_assignes:       critiquesNonAssignes,
+          tickets_supprimes:            ticketsSupprimes,
           temps_moyen_resolution_min:   tempsMoyenMin,
           taux_resolution_pct:          tauxResolution,
           par_priorite:                 parPriorite,
