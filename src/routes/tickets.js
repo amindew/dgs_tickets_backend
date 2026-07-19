@@ -5,7 +5,7 @@ const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
 const { notifier, destinatairesTicket } = require('../utils/notifications');
-const { calculerSla } = require('../utils/sla');
+const { calculerSla, SEUILS_SLA } = require('../utils/sla');
 const {
   transitionAutorisee,
   messageErreurTransition
@@ -171,11 +171,25 @@ console.log('======================');
       ? tickets.filter(t => t.statut !== 'resolu' && calculerSla(t).depasse)
       : tickets;
 
+    // Echeance SLA calculee automatiquement a partir de la priorite et de
+    // la date d'ouverture (RG-04). La date limite saisie manuellement a la
+    // creation, si elle existe, reste prioritaire (elle peut resserrer ou
+    // desserrer le delai par rapport au calcul automatique).
+    const ticketsAvecEcheance = ticketsFiltres.map(t => {
+      const seuil = SEUILS_SLA[t.priorite] || SEUILS_SLA.moyenne;
+      const echeanceCalculee = new Date(new Date(t.ouvert_le).getTime() + seuil * 60000);
+
+      return {
+        ...t.toJSON(),
+        sla_echeance: t.date_limite_resolution || echeanceCalculee,
+      };
+    });
+
     const groupes = {
-      a_faire:  ticketsFiltres.filter(t => t.statut === 'a_faire'),
-      en_cours: ticketsFiltres.filter(t => t.statut === 'en_cours'),
-      bloque:   ticketsFiltres.filter(t => t.statut === 'bloque'),
-      resolu:   ticketsFiltres.filter(t => t.statut === 'resolu'),
+      a_faire:  ticketsAvecEcheance.filter(t => t.statut === 'a_faire'),
+      en_cours: ticketsAvecEcheance.filter(t => t.statut === 'en_cours'),
+      bloque:   ticketsAvecEcheance.filter(t => t.statut === 'bloque'),
+      resolu:   ticketsAvecEcheance.filter(t => t.statut === 'resolu'),
     };
 
     res.json({ status: 'success', data: groupes });
