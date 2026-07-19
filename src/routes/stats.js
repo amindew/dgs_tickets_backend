@@ -8,18 +8,26 @@ router.get('/kpi', verifierToken,
   autoriserRoles('admin', 'responsable'),
   async (req, res) => {
     try {
-      const total = await Ticket.count();
+      // Un responsable ne voit que les statistiques de ses propres tickets
+      // crees ; seul l'admin a une visibilite totale (meme regle que la
+      // liste des tickets).
+      const filtreRole = req.user.role === 'responsable'
+        ? { cree_par: req.user.id }
+        : {};
+
+      const total = await Ticket.count({ where: filtreRole });
       const ouverts = await Ticket.count({
-        where: { statut: { [Op.ne]: 'resolu' } }
+        where: { ...filtreRole, statut: { [Op.ne]: 'resolu' } }
       });
       const resolus = await Ticket.count({
-        where: { statut: 'resolu' }
+        where: { ...filtreRole, statut: 'resolu' }
       });
       const bloques = await Ticket.count({
-        where: { statut: 'bloque' }
+        where: { ...filtreRole, statut: 'bloque' }
       });
       const critiquesNonAssignes = await Ticket.count({
         where: {
+          ...filtreRole,
           priorite:   'critique',
           assigne_id: null,
           statut:     { [Op.ne]: 'resolu' }
@@ -28,6 +36,7 @@ router.get('/kpi', verifierToken,
       // Temps moyen de resolution en minutes
       const ticketsResolus = await Ticket.findAll({
         where: {
+          ...filtreRole,
           statut: 'resolu',
           duree_resolution_min: { [Op.ne]: null }
         },
@@ -41,11 +50,13 @@ router.get('/kpi', verifierToken,
         : 0;
       // Stats par priorite
       const parPriorite = await Ticket.findAll({
+        where: filtreRole,
         attributes: ['priorite', [fn('COUNT', col('id')), 'total']],
         group: ['priorite'],
       });
       // Stats par statut
       const parStatut = await Ticket.findAll({
+        where: filtreRole,
         attributes: ['statut', [fn('COUNT', col('id')), 'total']],
         group: ['statut'],
       });
