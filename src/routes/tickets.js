@@ -25,7 +25,7 @@ async function notifierAssignation(io, ticket, technicien, acteur) {
       ticketId: ticket.id,
       type:     'assignation',
       titre:    `Ticket ${ticket.reference} assigné`,
-      message:  `Le ticket ${ticket.reference} vous a été assigné par ${acteur.nom}`,
+      message:  `Le ticket ${ticket.reference} vous a été assigné`,
       auteurNom: acteur.nom,
       extra: {
         type:        'assignation',
@@ -36,7 +36,7 @@ async function notifierAssignation(io, ticket, technicien, acteur) {
     });
   }
 
-  const messageAutres = `Le ticket ${ticket.reference} a été assigné à ${technicien.nom} par ${acteur.nom}`;
+  const messageAutres = `Le ticket ${ticket.reference} a été assigné à ${technicien.nom}`;
   const destinataires = await destinatairesTicket(ticket, acteur.id, [technicien.id]);
 
   for (const userId of destinataires) {
@@ -350,7 +350,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       type:     'statut_change',
       titre:    `Ticket ${ticket.reference} mis à jour`,
       message:  `Le statut du ticket "${ticket.titre}" est passé de ` +
-                `"${statutAvant}" à "${nouveau_statut}" par ${req.user.nom}`,
+                `"${statutAvant}" à "${nouveau_statut}"`,
       auteurNom: req.user.nom,
       extra: {
         type:           'statut_change',
@@ -494,7 +494,7 @@ console.log('========================');
         ? commentaire.contenu.slice(0, 60) + '...'
         : commentaire.contenu;
 
-      const messageNotif = `${req.user.nom} a commenté sur ${ticket.reference} : "${extrait}"`;
+      const messageNotif = `Nouveau commentaire sur ${ticket.reference} : "${extrait}"`;
 
       const notifierCommentaire = (userId) => notifier(io, {
         userId,
@@ -619,7 +619,7 @@ router.post('/:id/pieces', verifierToken,
 const io = req.app.get('io');
 
 if (io) {
-  const messageNotif = `${req.user.nom} a joint le fichier "${piece.nom_fichier}" sur le ticket ${ticket.reference}`;
+  const messageNotif = `Fichier "${piece.nom_fichier}" ajouté sur le ticket ${ticket.reference}`;
 
   const notifierPiece = (userId) => notifier(io, {
     userId,
