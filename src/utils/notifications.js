@@ -41,24 +41,26 @@ async function destinatairesTicket(ticket, acteurId, idsSupplementairesAExclure 
 
 // Sauvegarde une notification en base puis l'emet en temps reel a
 // l'utilisateur concerne, si son socket est connecte.
-async function notifier(io, { userId, ticketId, type, titre, message, extra = {} }) {
+async function notifier(io, { userId, ticketId, type, titre, message, auteurNom, extra = {} }) {
   if (!userId) return null;
 
   const notif = await Notification.create({
-    user_id:   userId,
-    ticket_id: ticketId,
+    user_id:    userId,
+    ticket_id:  ticketId,
     type,
     titre,
     message,
+    auteur_nom: auteurNom || null,
     lue: false,
   });
 
   if (io) {
     io.to(`user_${userId}`).emit('notification', {
-      id:        notif.id,
-      ticket_id: ticketId,
+      id:         notif.id,
+      ticket_id:  ticketId,
       message,
-      date:      new Date().toISOString(),
+      auteur_nom: auteurNom || null,
+      date:       new Date().toISOString(),
       ...extra,
     });
   }

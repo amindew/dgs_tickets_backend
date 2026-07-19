@@ -26,6 +26,7 @@ async function notifierAssignation(io, ticket, technicien, acteur) {
       type:     'assignation',
       titre:    `Ticket ${ticket.reference} assigné`,
       message:  `Le ticket ${ticket.reference} vous a été assigné par ${acteur.nom}`,
+      auteurNom: acteur.nom,
       extra: {
         type:        'assignation',
         reference:   ticket.reference,
@@ -45,6 +46,7 @@ async function notifierAssignation(io, ticket, technicien, acteur) {
       type:     'assignation',
       titre:    `Ticket ${ticket.reference} assigné`,
       message:  messageAutres,
+      auteurNom: acteur.nom,
       extra: {
         type:        'assignation',
         reference:   ticket.reference,
@@ -335,6 +337,7 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       titre:    `Ticket ${ticket.reference} mis à jour`,
       message:  `Le statut du ticket "${ticket.titre}" est passé de ` +
                 `"${statutAvant}" à "${nouveau_statut}" par ${req.user.nom}`,
+      auteurNom: req.user.nom,
       extra: {
         type:           'statut_change',
         reference:      ticket.reference,
@@ -485,6 +488,7 @@ console.log('========================');
         type:     'commentaire',
         titre:    `Nouveau commentaire sur ${ticket.reference}`,
         message:  messageNotif,
+        auteurNom: req.user.nom,
         extra: {
           type:      'nouveau_commentaire',
           reference: ticket.reference,
@@ -609,6 +613,7 @@ if (io) {
     type:     'piece_jointe',
     titre:    `Nouvelle pièce jointe sur ${ticket.reference}`,
     message:  messageNotif,
+    auteurNom: req.user.nom,
     extra: {
       type:        'nouvelle_piece_jointe',
       reference:   ticket.reference,

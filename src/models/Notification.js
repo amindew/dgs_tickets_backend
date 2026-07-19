@@ -44,6 +44,14 @@ module.exports = (sequelize) => {
       allowNull: false,
     },
 
+    // Nom de la personne qui a effectue l'action a l'origine de la
+    // notification (fige au moment de l'action, independant du nom actuel
+    // de l'utilisateur si celui-ci change plus tard).
+    auteur_nom: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+
   }, {
     tableName: 'Notifications',
     timestamps: true,
