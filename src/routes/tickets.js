@@ -5,6 +5,7 @@ const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
 const { idsAdmins, notifier } = require('../utils/notifications');
+const { calculerSla } = require('../utils/sla');
 const {
   transitionAutorisee,
   messageErreurTransition
@@ -56,7 +57,7 @@ async function notifierAssignation(io, ticket, technicien, acteurNom, idsAExclur
 // GET /tickets — Lister tickets (filtre selon le role - RG-08)
 router.get('/', verifierToken, async (req, res) => {
   try {
-    const { agent, agents, client, priorite, statut, date_debut, date_fin } = req.query;
+    const { agent, agents, client, priorite, statut, date_debut, date_fin, sla_depasse } = req.query;
 
     let agentsFiltre = [];
 
@@ -147,11 +148,17 @@ console.log(
 
 console.log('======================');
 
+    // Filtre SLA depasse (calcule, pas stocke en base) : un ticket deja
+    // resolu n'est plus "en depassement" en cours.
+    const ticketsFiltres = sla_depasse === 'true'
+      ? tickets.filter(t => t.statut !== 'resolu' && calculerSla(t).depasse)
+      : tickets;
+
     const groupes = {
-      a_faire:  tickets.filter(t => t.statut === 'a_faire'),
-      en_cours: tickets.filter(t => t.statut === 'en_cours'),
-      bloque:   tickets.filter(t => t.statut === 'bloque'),
-      resolu:   tickets.filter(t => t.statut === 'resolu'),
+      a_faire:  ticketsFiltres.filter(t => t.statut === 'a_faire'),
+      en_cours: ticketsFiltres.filter(t => t.statut === 'en_cours'),
+      bloque:   ticketsFiltres.filter(t => t.statut === 'bloque'),
+      resolu:   ticketsFiltres.filter(t => t.statut === 'resolu'),
     };
 
     res.json({ status: 'success', data: groupes });
@@ -735,20 +742,7 @@ router.get('/:id/sla', verifierToken, async (req, res) => {
       });
     }
 
-    const maintenant = new Date();
-    const ouverture  = new Date(ticket.ouvert_le);
-    const fermeture  = ticket.resolu_le ? new Date(ticket.resolu_le) : maintenant;
-    const dureeMin   = Math.round((fermeture - ouverture) / 60000);
-
-    // Seuils SLA selon la priorite (en minutes)
-    const SEUILS = {
-      critique: 60,   // 1 heure
-      moyenne:  240,  // 4 heures
-      basse:    1440, // 24 heures
-    };
-
-    const seuil   = SEUILS[ticket.priorite] || 240;
-    const depasse = dureeMin > seuil;
+    const { dureeMin, seuil, depasse } = calculerSla(ticket);
     const estResolu = ticket.statut === 'resolu';
 
     res.json({

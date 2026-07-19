@@ -13,6 +13,11 @@ const userRoutes   = require('./routes/users');
 const statsRoutes  = require('./routes/stats'); // <- C
 
 const app    = express();
+// Express 5 utilise par defaut le parseur "simple" (querystring natif), qui
+// ne convertit plus foo[]=a&foo[]=b en tableau. On revient au parseur
+// "extended" (qs) pour que les filtres multi-selection (statut, priorite,
+// agents) envoyes par le frontend soient bien recus sous forme de tableaux.
+app.set('query parser', 'extended');
 const server = http.createServer(app);
 
 const notifRoutes = require('./routes/notifications');
