@@ -99,6 +99,12 @@ agentsFiltre = agentsFiltre.filter(Boolean);
       };
     }
 
+    // Un responsable ne voit que les tickets qu'il a lui-meme crees ;
+    // seul l'admin a une visibilite totale sur tous les tickets.
+    if (req.user.role === 'responsable') {
+      whereClause.cree_par = req.user.id;
+    }
+
   if (agentsFiltre.length > 0) {
   whereClause.assigne_id = {
     [Op.in]: agentsFiltre
@@ -275,6 +281,14 @@ router.post('/', verifierToken,
           message: 'Acces refuse : ce ticket ne vous concerne pas',
         });
       }
+    }
+
+    // Un responsable ne peut acceder qu'aux tickets qu'il a lui-meme crees
+    if (req.user.role === 'responsable' && String(ticket.cree_par) !== String(req.user.id)) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Acces refuse : ce ticket ne vous concerne pas',
+      });
     }
 
     res.json({ status: 'success', data: ticket });
