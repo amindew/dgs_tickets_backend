@@ -448,8 +448,26 @@ router.patch('/:id/assignation', verifierToken,
         });
       }
 
+      // Toute (re)assignation remet le ticket a "a faire" et redemarre le
+      // delai SLA a zero (nouvelle ouvert_le) : le travail recommence avec
+      // le nouveau technicien.
+      const statutAvant = ticket.statut;
       ticket.assigne_id = assigne_id;
+      ticket.statut     = 'a_faire';
+      ticket.ouvert_le  = new Date();
+      ticket.resolu_le  = null;
+      ticket.duree_resolution_min = null;
       await ticket.save();
+
+      if (statutAvant !== 'a_faire') {
+        await HistoriqueStatut.create({
+          ticket_id:      ticket.id,
+          ancien_statut:  statutAvant,
+          nouveau_statut: 'a_faire',
+          modifie_par:    req.user.id,
+          modifie_le:     new Date(),
+        });
+      }
 
       const io = req.app.get('io');
       await notifierAssignation(io, ticket, technicien, req.user);

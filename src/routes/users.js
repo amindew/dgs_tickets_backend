@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
-const { User } = require('../models');
+const { Op } = require('sequelize');
+const { User, Ticket, HistoriqueStatut } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const upload = require('../config/multer');
 
@@ -93,6 +94,39 @@ router.patch('/:id/actif', verifierToken, autoriserRoles('admin'), async (req, r
 
     user.actif = actif;
     await user.save();
+
+    // Desactivation d'un technicien : ses tickets en cours (tout sauf les
+    // resolus) lui sont retires, repartent a "a faire" et repartent avec
+    // un delai SLA remis a zero, pour qu'ils soient rapidement reassignes.
+    if (!actif) {
+      const ticketsARelibere = await Ticket.findAll({
+        where: {
+          assigne_id: user.id,
+          statut: { [Op.ne]: 'resolu' },
+          supprime: { [Op.not]: true },
+        },
+      });
+
+      for (const ticket of ticketsARelibere) {
+        const statutAvant = ticket.statut;
+        ticket.assigne_id = null;
+        ticket.statut     = 'a_faire';
+        ticket.ouvert_le  = new Date();
+        ticket.resolu_le  = null;
+        ticket.duree_resolution_min = null;
+        await ticket.save();
+
+        if (statutAvant !== 'a_faire') {
+          await HistoriqueStatut.create({
+            ticket_id:      ticket.id,
+            ancien_statut:  statutAvant,
+            nouveau_statut: 'a_faire',
+            modifie_par:    req.user.id,
+            modifie_le:     new Date(),
+          });
+        }
+      }
+    }
 
     res.json({
       status: 'success',
