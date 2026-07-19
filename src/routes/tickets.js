@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { Ticket, User, HistoriqueStatut, Commentaire } = require('../models');
 const { verifierToken, autoriserRoles } = require('../middlewares/auth');
 const { genererReference } = require('../utils/reference');
-const { idsAdmins, notifier } = require('../utils/notifications');
+const { notifier, destinatairesTicket } = require('../utils/notifications');
 const { calculerSla } = require('../utils/sla');
 const {
   transitionAutorisee,
@@ -13,42 +13,43 @@ const {
 const fs = require('fs');
 const path = require('path');
 
-// Notifie le technicien qu'un ticket lui a ete assigne (a la creation ou
-// via une reassignation), puis tous les admins pour leur visibilite globale
-// (RG : les admins voient toute l'activite des tickets, meme sans lien
-// direct avec le ticket).
-async function notifierAssignation(io, ticket, technicien, acteurNom, idsAExclureAdmins = []) {
-  const messageDestinataire = `Le ticket ${ticket.reference} vous a été assigné par ${acteurNom}`;
-
-  await notifier(io, {
-    userId:   technicien.id,
-    ticketId: ticket.id,
-    type:     'assignation',
-    titre:    `Ticket ${ticket.reference} assigné`,
-    message:  messageDestinataire,
-    extra: {
-      type:        'assignation',
-      reference:   ticket.reference,
-      titre:       ticket.titre,
-      assigne_par: acteurNom,
-    },
-  });
-
-  const messageAdmins = `Le ticket ${ticket.reference} a été assigné à ${technicien.nom} par ${acteurNom}`;
-  const exclusion = new Set([technicien.id, ...idsAExclureAdmins].filter(Boolean).map(String));
-
-  for (const adminId of await idsAdmins([...exclusion])) {
+// Notifie le technicien qu'un ticket lui a ete assigne (a la creation ou via
+// une reassignation), puis le createur/responsable-assigneur et les admins
+// pour leur visibilite globale (RG : les admins voient toute l'activite des
+// tickets, meme sans lien direct avec le ticket). L'acteur de l'action n'est
+// jamais notifie de sa propre action.
+async function notifierAssignation(io, ticket, technicien, acteur) {
+  if (String(technicien.id) !== String(acteur.id)) {
     await notifier(io, {
-      userId:   adminId,
+      userId:   technicien.id,
       ticketId: ticket.id,
       type:     'assignation',
       titre:    `Ticket ${ticket.reference} assigné`,
-      message:  messageAdmins,
+      message:  `Le ticket ${ticket.reference} vous a été assigné par ${acteur.nom}`,
       extra: {
         type:        'assignation',
         reference:   ticket.reference,
         titre:       ticket.titre,
-        assigne_par: acteurNom,
+        assigne_par: acteur.nom,
+      },
+    });
+  }
+
+  const messageAutres = `Le ticket ${ticket.reference} a été assigné à ${technicien.nom} par ${acteur.nom}`;
+  const destinataires = await destinatairesTicket(ticket, acteur.id, [technicien.id]);
+
+  for (const userId of destinataires) {
+    await notifier(io, {
+      userId,
+      ticketId: ticket.id,
+      type:     'assignation',
+      titre:    `Ticket ${ticket.reference} assigné`,
+      message:  messageAutres,
+      extra: {
+        type:        'assignation',
+        reference:   ticket.reference,
+        titre:       ticket.titre,
+        assigne_par: acteur.nom,
       },
     });
   }
@@ -219,7 +220,7 @@ router.post('/', verifierToken,
         });
 
         if (technicien) {
-          await notifierAssignation(io, ticket, technicien, req.user.nom, [req.user.id]);
+          await notifierAssignation(io, ticket, technicien, req.user);
         }
       }
 
@@ -345,34 +346,10 @@ router.patch('/:id/statut', verifierToken, async (req, res) => {
       },
     });
 
-    const idsDejaNotifies = new Set();
-
-    // Notifier le createur
-    if (ticket.cree_par) {
-      const createur = await User.findByPk(ticket.cree_par, {
-        attributes: ['id']
-      });
-      if (createur) {
-        await notifierStatutChange(createur.id);
-        idsDejaNotifies.add(String(createur.id));
-      }
-    }
-
-    // Notifier l'assigne
-    if (ticket.assigne_id && !idsDejaNotifies.has(String(ticket.assigne_id))) {
-      const assigne = await User.findByPk(ticket.assigne_id, {
-        attributes: ['id']
-      });
-      if (assigne) {
-        await notifierStatutChange(assigne.id);
-        idsDejaNotifies.add(String(assigne.id));
-      }
-    }
-
-    // Notifier les admins (visibilite globale sur toute l'activite des tickets)
-    idsDejaNotifies.add(String(req.user.id));
-    for (const adminId of await idsAdmins([...idsDejaNotifies])) {
-      await notifierStatutChange(adminId);
+    // Createur/responsable-assigneur + technicien assigne + admins, sans
+    // doublon et sans notifier l'auteur de l'action lui-meme
+    for (const userId of await destinatairesTicket(ticket, req.user.id)) {
+      await notifierStatutChange(userId);
     }
 
     // 🔥 TEMPS RÉEL — mise à jour du board pour tous
@@ -436,7 +413,7 @@ router.patch('/:id/assignation', verifierToken,
       await ticket.save();
 
       const io = req.app.get('io');
-      await notifierAssignation(io, ticket, technicien, req.user.nom, [req.user.id]);
+      await notifierAssignation(io, ticket, technicien, req.user);
 
       res.json({ status: 'success', message: 'Ticket assigne', data: ticket });
     } catch (error) {
@@ -517,23 +494,10 @@ console.log('========================');
         },
       });
 
-      const idsDejaNotifies = new Set();
-
-      // 🔔 notif
-      if (ticket.cree_par) {
-        await notifierCommentaire(ticket.cree_par);
-        idsDejaNotifies.add(String(ticket.cree_par));
-      }
-
-      if (ticket.assigne_id && !idsDejaNotifies.has(String(ticket.assigne_id))) {
-        await notifierCommentaire(ticket.assigne_id);
-        idsDejaNotifies.add(String(ticket.assigne_id));
-      }
-
-      // Notifier les admins (visibilite globale sur toute l'activite des tickets)
-      idsDejaNotifies.add(String(req.user.id));
-      for (const adminId of await idsAdmins([...idsDejaNotifies])) {
-        await notifierCommentaire(adminId);
+      // 🔔 createur/responsable-assigneur + technicien assigne + admins,
+      // sans doublon et sans notifier l'auteur du commentaire lui-meme
+      for (const userId of await destinatairesTicket(ticket, req.user.id)) {
+        await notifierCommentaire(userId);
       }
 
       // ⚡ temps réel (affichage direct)
@@ -654,21 +618,10 @@ if (io) {
     },
   });
 
-  const idsDejaNotifies = new Set();
-
-  if (ticket.cree_par) {
-    await notifierPiece(ticket.cree_par);
-    idsDejaNotifies.add(String(ticket.cree_par));
-  }
-  if (ticket.assigne_id && !idsDejaNotifies.has(String(ticket.assigne_id))) {
-    await notifierPiece(ticket.assigne_id);
-    idsDejaNotifies.add(String(ticket.assigne_id));
-  }
-
-  // Notifier les admins (visibilite globale sur toute l'activite des tickets)
-  idsDejaNotifies.add(String(req.user.id));
-  for (const adminId of await idsAdmins([...idsDejaNotifies])) {
-    await notifierPiece(adminId);
+  // Createur/responsable-assigneur + technicien assigne + admins, sans
+  // doublon et sans notifier l'auteur de l'ajout lui-meme
+  for (const userId of await destinatairesTicket(ticket, req.user.id)) {
+    await notifierPiece(userId);
   }
 
   // Signal temps reel pour les vues de ticket deja ouvertes
